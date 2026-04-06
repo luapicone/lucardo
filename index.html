@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinTrack — Tu tracker financiero</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="live-indicator">
+        <span class="live-dot"></span>
+        <span class="live-label">LIVE</span>
+      </div>
+      <h1 class="logo">FinTrack</h1>
+      <span class="last-update" id="last-update">—</span>
+    </div>
+    <nav class="tabs" id="main-tabs">
+      <button class="tab active" data-view="dash">Resumen</button>
+      <button class="tab" data-view="ops">Operaciones</button>
+      <button class="tab" data-view="exp">Gastos</button>
+      <button class="tab" data-view="inc">Ingresos</button>
+    </nav>
+    <div class="header-right">
+      <button class="icon-btn" id="refresh-btn" title="Actualizar precios">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Actualizar
+      </button>
+    </div>
+  </header>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+
+    <!-- MAIN CONTENT -->
+    <main class="main" id="main">
+
+      <!-- DASHBOARD VIEW -->
+      <section class="view active" id="view-dash">
+        <div class="summary-grid">
+          <div class="metric-card accent" id="card-capital">
+            <div class="metric-label">Capital actual</div>
+            <div class="metric-value" id="d-capital">$0</div>
+            <div class="metric-sub" id="d-capital-sub">valorización en tiempo real</div>
+          </div>
+          <div class="metric-card" id="card-invested">
+            <div class="metric-label">Total invertido</div>
+            <div class="metric-value" id="d-invested">$0</div>
+            <div class="metric-sub" id="d-inv-count">0 operaciones</div>
+          </div>
+          <div class="metric-card" id="card-pnl">
+            <div class="metric-label">PnL general</div>
+            <div class="metric-value" id="d-pnl">$0</div>
+            <div class="metric-sub" id="d-pnl-pct">—</div>
+          </div>
+          <div class="metric-card" id="card-balance">
+            <div class="metric-label">Balance del mes</div>
+            <div class="metric-value" id="d-balance">$0</div>
+            <div class="metric-sub">ingresos − gastos</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Ingresos del mes</div>
+            <div class="metric-value positive" id="d-income">$0</div>
+            <div class="metric-sub" id="d-income-count">0 registros</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Gastos del mes</div>
+            <div class="metric-value" id="d-expenses">$0</div>
+            <div class="metric-sub" id="d-exp-count">0 transacciones</div>
+          </div>
+        </div>
+
+        <div class="panels-row">
+          <div class="panel panel-wide">
+            <div class="panel-header">
+              <span class="panel-title">Últimas operaciones</span>
+              <button class="text-btn" onclick="showView('ops')">Ver todas →</button>
+            </div>
+            <div id="dash-ops-list"><p class="empty-state">Sin operaciones. Usá el chat para agregar.</p></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">Gastos por categoría</span>
+            </div>
+            <div id="dash-exp-bars"><p class="empty-state">Sin gastos registrados.</p></div>
+          </div>
+        </div>
+
+        <div class="panels-row">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Últimos ingresos</span></div>
+            <div id="dash-inc-list"><p class="empty-state">Sin ingresos.</p></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Distribución del portafolio</span></div>
+            <div id="dash-portfolio-dist"><p class="empty-state">Sin operaciones.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- OPERACIONES VIEW -->
+      <section class="view" id="view-ops">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Todas las operaciones</span>
+            <span class="ops-count badge" id="ops-badge">0</span>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="ops-table">
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th>Ticker</th>
+                  <th class="r">Cantidad</th>
+                  <th class="r">P. Compra</th>
+                  <th class="r">Invertido</th>
+                  <th class="r">P. Actual</th>
+                  <th class="r">Capital</th>
+                  <th class="r">PnL $</th>
+                  <th class="r">PnL %</th>
+                  <th class="r">Fecha</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="ops-tbody">
+                <tr><td colspan="11" class="empty-state">Sin operaciones.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="ops-footer" id="ops-footer"></div>
+        </div>
+      </section>
+
+      <!-- GASTOS VIEW -->
+      <section class="view" id="view-exp">
+        <div class="panels-row">
+          <div class="panel panel-wide">
+            <div class="panel-header"><span class="panel-title">Historial de gastos</span></div>
+            <div id="exp-full-list"><p class="empty-state">Sin gastos.</p></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Por categoría</span></div>
+            <div id="exp-full-bars"><p class="empty-state">Sin gastos.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- INGRESOS VIEW -->
+      <section class="view" id="view-inc">
+        <div class="panels-row">
+          <div class="panel panel-wide">
+            <div class="panel-header"><span class="panel-title">Historial de ingresos</span></div>
+            <div id="inc-full-list"><p class="empty-state">Sin ingresos.</p></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Por categoría</span></div>
+            <div id="inc-full-bars"><p class="empty-state">Sin ingresos.</p></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- CHAT SIDEBAR -->
+    <aside class="chat-sidebar">
+      <div class="chat-header">
+        <div class="chat-title">Asistente financiero</div>
+        <div class="chat-sub">Precios en tiempo real · Todo guardado</div>
+      </div>
+
+      <div class="chat-messages" id="chat-msgs">
+        <div class="msg assistant">
+          ¡Hola! Registrá tus movimientos así:<br><br>
+          <strong>Acciones:</strong> "Compré 10 AAPL a $150"<br>
+          <strong>Criptos:</strong> "Compré 0.5 BTC a $40000"<br>
+          <strong>ETF:</strong> "Compré 5 SPY a $450"<br>
+          <strong>Ingresos:</strong> "Cobré sueldo $500.000"<br>
+          <strong>Gastos:</strong> "Gasté $8.000 en supermercado"<br><br>
+          Busco el precio actual automáticamente y calculo tu PnL en tiempo real.
+        </div>
+      </div>
+
+      <div class="quick-btns">
+        <button class="qb" data-msg="Compré 10 AAPL a $150">+ AAPL</button>
+        <button class="qb" data-msg="Compré 0.5 BTC a $40000">+ BTC</button>
+        <button class="qb" data-msg="Compré 5 SPY a $450">+ SPY</button>
+        <button class="qb" data-msg="Cobré sueldo $500.000">+ Sueldo</button>
+        <button class="qb" data-msg="Gasté $5.000 en supermercado">+ Gasto</button>
+        <button class="qb" data-msg="¿Cómo está mi situación financiera?">Resumen ↗</button>
+      </div>
+
+      <div class="chat-input-area">
+        <textarea
+          id="chat-input"
+          class="chat-input"
+          rows="1"
+          placeholder="Ej: Compré 2 ETH a $2000..."
+        ></textarea>
+        <button class="send-btn" id="send-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/prices.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
