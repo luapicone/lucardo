@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FinTrack</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0f11;--bg-panel:#131619;--bg-card:#181c1f;--bg-hover:#1e2327;
+  --border:rgba(255,255,255,0.07);--border-md:rgba(255,255,255,0.12);
+  --text:#e8eaec;--text-s:#818a94;--text-t:#50575e;
+  --green:#22c55e;--green-dim:rgba(34,197,94,0.12);
+  --red:#ef4444;--red-dim:rgba(239,68,68,0.12);
+  --blue:#3b82f6;
+  --mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif;
+  --r:10px;--rl:14px;--header:52px;--chat:310px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border-md);border-radius:4px}
+
+/* HEADER */
+.header{position:sticky;top:0;z-index:100;height:var(--header);background:rgba(13,15,17,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px;padding:0 20px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(34,197,94,0.4);animation:pulse 2s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.live-label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:var(--green)}
+.logo{font-size:16px;font-weight:500}
+.last-upd{font-family:var(--mono);font-size:10px;color:var(--text-t)}
+.tabs{display:flex;gap:2px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:3px;margin-left:auto}
+.tab{padding:5px 13px;border-radius:8px;font-size:12px;font-family:var(--sans);cursor:pointer;border:none;background:transparent;color:var(--text-s);transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--bg-hover);color:var(--text);font-weight:500}
+.icon-btn{display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border-md);border-radius:8px;background:transparent;color:var(--text-s);font-size:12px;font-family:var(--sans);cursor:pointer;transition:.15s}
+.icon-btn:hover{color:var(--text);background:var(--bg-hover)}
+.icon-btn.spinning svg{animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:1fr var(--chat);height:calc(100vh - var(--header))}
+.main{overflow-y:auto;padding:16px}
+.view{display:none}.view.active{display:block}
+
+/* CARDS */
+.summary-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.metric-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;transition:.15s}
+.metric-card:hover{border-color:var(--border-md)}
+.metric-card.accent{border-color:rgba(59,130,246,0.3)}
+.metric-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:5px}
+.metric-value{font-family:var(--mono);font-size:19px;color:var(--text);line-height:1.2}
+.metric-sub{font-size:10px;color:var(--text-t);margin-top:3px}
+
+/* PANELS */
+.panels-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:14px;overflow:hidden}
+.panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.panel-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s)}
+.text-btn{font-size:11px;color:var(--text-t);background:none;border:none;cursor:pointer;font-family:var(--sans)}
+.text-btn:hover{color:var(--text-s)}
+.badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:99px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text-s)}
+
+/* TABLE */
+.table-scroll{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th{font-family:var(--mono);font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+.data-table th.r,.data-table td.r{text-align:right}
+.data-table td{padding:10px 8px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;white-space:nowrap}
+.data-table tbody tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover td{background:var(--bg-hover)}
+.ticker-chip{font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:4px;background:var(--bg-hover);border:1px solid var(--border-md);color:var(--text-s)}
+.type-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.asset-name{font-weight:500;font-size:13px}
+.ops-footer{display:flex;justify-content:flex-end;gap:24px;padding:12px 8px 0;margin-top:10px;border-top:1px solid var(--border)}
+.footer-label{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);font-family:var(--mono);margin-bottom:2px}
+.footer-value{font-family:var(--mono);font-size:15px;color:var(--text)}
+
+/* ROW ITEMS */
+.row-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)}
+.row-item:last-child{border-bottom:none}
+.row-left{display:flex;align-items:center;gap:9px}
+.cat-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.row-name{font-size:13px;color:var(--text)}
+.row-sub{font-size:10px;color:var(--text-t);margin-top:1px}
+.row-actions{display:flex;align-items:center;gap:9px}
+.row-value{font-family:var(--mono);font-size:13px;color:var(--text)}
+
+/* BARS */
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.bar-label{font-size:11px;color:var(--text-s);width:85px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{flex:1;height:4px;background:var(--bg-hover);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .4s ease}
+.bar-value{font-family:var(--mono);font-size:11px;color:var(--text-s);width:72px;text-align:right;flex-shrink:0}
+
+/* DIST */
+.dist-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
+.dist-row:last-child{border-bottom:none}
+.dist-name{font-size:12px;color:var(--text);display:flex;align-items:center;gap:7px}
+.dist-pct{font-family:var(--mono);font-size:12px;color:var(--text-s)}
+
+/* COLORS */
+.positive{color:var(--green)!important}
+.negative{color:var(--red)!important}
+.empty-state{color:var(--text-t);font-size:12px;text-align:center;padding:20px 0;font-style:italic}
+td.empty-state{text-align:center;padding:20px}
+
+.del-btn{font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-t);cursor:pointer;font-family:var(--sans);transition:.15s}
+.del-btn:hover{color:var(--red);border-color:rgba(239,68,68,0.4);background:var(--red-dim)}
+.price-loading{color:var(--text-t);font-style:italic;font-size:11px}
+
+/* CHAT */
+.chat-sidebar{background:var(--bg-panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.chat-header{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.chat-title{font-size:13px;font-weight:500}
+.chat-sub{font-size:10px;color:var(--text-t);margin-top:2px}
+.chat-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:93%;padding:9px 12px;border-radius:var(--rl);font-size:12px;line-height:1.6}
+.msg.assistant{background:var(--bg-card);color:var(--text);align-self:flex-start;border:1px solid var(--border)}
+.msg.assistant strong{color:var(--text);font-weight:500}
+.msg.user{background:var(--blue);color:#fff;align-self:flex-end}
+.typing-dots{display:flex;gap:4px;align-items:center;padding:2px 0}
+.typing-dot{width:5px;height:5px;border-radius:50%;background:var(--text-t);animation:blink 1.2s infinite}
+.typing-dot:nth-child(2){animation-delay:.2s}.typing-dot:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+.quick-btns{display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px;border-top:1px solid var(--border);flex-shrink:0}
+.qb{font-size:11px;padding:4px 9px;border:1px solid var(--border-md);border-radius:6px;background:transparent;color:var(--text-s);cursor:pointer;font-family:var(--sans);transition:.15s}
+.qb:hover{background:var(--bg-hover);color:var(--text)}
+.chat-input-area{padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end;flex-shrink:0}
+.chat-input{flex:1;background:var(--bg-card);border:1px solid var(--border-md);border-radius:var(--r);padding:8px 12px;font-size:12px;font-family:var(--sans);color:var(--text);outline:none;resize:none;line-height:1.5;max-height:100px;transition:.15s}
+.chat-input::placeholder{color:var(--text-t)}
+.chat-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
+.send-btn{width:34px;height:34px;border-radius:6px;background:var(--blue);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.send-btn:hover{background:#2563eb}.send-btn:active{transform:scale(.96)}.send-btn:disabled{opacity:.4;cursor:not-allowed}
+
+@media(max-width:1100px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){:root{--chat:260px}.panels-row{grid-template-columns:1fr}}
+@media(max-width:680px){.layout{grid-template-columns:1fr}.chat-sidebar{display:none}}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="live-dot"></div>
+  <span class="live-label">LIVE</span>
+  <h1 class="logo">FinTrack</h1>
+  <span class="last-upd" id="last-upd">—</span>
+  <button class="icon-btn" id="refresh-btn">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    Actualizar
+  </button>
+  <nav class="tabs">
+    <button class="tab active" data-view="dash">Resumen</button>
+    <button class="tab" data-view="ops">Operaciones</button>
+    <button class="tab" data-view="exp">Gastos</button>
+    <button class="tab" data-view="inc">Ingresos</button>
+  </nav>
+</header>
+
+<div class="layout">
+  <main class="main">
+
+    <section class="view active" id="view-dash">
+      <div class="summary-grid">
+        <div class="metric-card accent"><div class="metric-label">Capital actual</div><div class="metric-value" id="d-capital">$0</div><div class="metric-sub">valorización actual</div></div>
+        <div class="metric-card"><div class="metric-label">Total invertido</div><div class="metric-value" id="d-invested">$0</div><div class="metric-sub" id="d-inv-count">0 operaciones</div></div>
+        <div class="metric-card"><div class="metric-label">PnL general</div><div class="metric-value" id="d-pnl">$0</div><div class="metric-sub" id="d-pnl-pct">—</div></div>
+        <div class="metric-card"><div class="metric-label">Balance mes</div><div class="metric-value" id="d-balance">$0</div><div class="metric-sub">ingresos − gastos</div></div>
+        <div class="metric-card"><div class="metric-label">Ingresos mes</div><div class="metric-value positive" id="d-income">$0</div><div class="metric-sub" id="d-income-count">0 registros</div></div>
+        <div class="metric-card"><div class="metric-label">Gastos mes</div><div class="metric-value" id="d-expenses">$0</div><div class="metric-sub" id="d-exp-count">0 transacciones</div></div>
+      </div>
+      <div class="panels-row">
+        <div class="panel"><div class="panel-header"><span class="panel-title">Últimas operaciones</span><button class="text-btn" onclick="showView('ops')">Ver todas →</button></div><div id="dash-ops-list"><p class="empty-state">Sin operaciones.</p></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title">Gastos por categoría</span></div><div id="dash-exp-bars"><p class="empty-state">Sin gastos.</p></div></div>
+      </div>
+      <div class="panels-row">
+        <div class="panel"><div class="panel-header"><span class="panel-title">Últimos ingresos</span></div><div id="dash-inc-list"><p class="empty-state">Sin ingresos.</p></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title">Distribución portafolio</span></div><div id="dash-dist"><p class="empty-state">Sin operaciones.</p></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-ops">
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Todas las operaciones</span><span class="badge" id="ops-badge">0</span></div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Activo</th><th>Ticker</th><th class="r">Cantidad</th><th class="r">P.Compra</th><th class="r">Invertido</th><th class="r">P.Actual</th><th class="r">Capital</th><th class="r">PnL $</th><th class="r">PnL %</th><th class="r">Fecha</th><th></th></tr></thead>
+            <tbody id="ops-tbody"><tr><td colspan="11" class="empty-state">Sin operaciones.</td></tr></tbody>
+          </table>
+        </div>
+        <div class="ops-footer" id="ops-footer"></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-exp">
+      <div class="panels-row">
+        <div class="panel"><div class="panel-header"><span class="panel-title">Historial de gastos</span></div><div id="exp-list"><p class="empty-state">Sin gastos.</p></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title">Por categoría</span></div><div id="exp-bars"><p class="empty-state">Sin gastos.</p></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-inc">
+      <div class="panels-row">
+        <div class="panel"><div class="panel-header"><span class="panel-title">Historial de ingresos</span></div><div id="inc-list"><p class="empty-state">Sin ingresos.</p></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title">Por categoría</span></div><div id="inc-bars"><p class="empty-state">Sin ingresos.</p></div></div>
+      </div>
+    </section>
+
+  </main>
+
+  <aside class="chat-sidebar">
+    <div class="chat-header"><div class="chat-title">Asistente financiero</div><div class="chat-sub">Precios en tiempo real · Todo guardado</div></div>
+    <div class="chat-messages" id="chat-msgs">
+      <div class="msg assistant">¡Hola! Registrá tus movimientos así:<br><br>
+        <strong>Acciones:</strong> "Compré 10 AAPL a $150"<br>
+        <strong>Criptos:</strong> "Compré 0.5 BTC a $40000"<br>
+        <strong>ETF:</strong> "Compré 5 SPY a $450"<br>
+        <strong>Ingresos:</strong> "Cobré sueldo $500.000"<br>
+        <strong>Gastos:</strong> "Gasté $8.000 en supermercado"
+      </div>
+    </div>
+    <div class="quick-btns">
+      <button class="qb" data-msg="Compré 10 AAPL a $150">+ AAPL</button>
+      <button class="qb" data-msg="Compré 0.5 BTC a $40000">+ BTC</button>
+      <button class="qb" data-msg="Compré 5 SPY a $450">+ SPY</button>
+      <button class="qb" data-msg="Cobré sueldo $500.000">+ Sueldo</button>
+      <button class="qb" data-msg="Gasté $5.000 en supermercado">+ Gasto</button>
+      <button class="qb" data-msg="¿Cómo está mi situación financiera?">Resumen ↗</button>
+    </div>
+    <div class="chat-input-area">
+      <textarea id="chat-input" class="chat-input" rows="1" placeholder="Ej: Compré 2 ETH a $2000..."></textarea>
+      <button class="send-btn" id="send-btn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ── STORAGE ──
+const STORAGE_KEY='fintrack-v3';
+const db={operations:[],expenses:[],incomes:[]};
+function loadState(){try{const r=localStorage.getItem(STORAGE_KEY);if(r){const p=JSON.parse(r);if(p.operations)db.operations=p.operations;if(p.expenses)db.expenses=p.expenses;if(p.incomes)db.incomes=p.incomes;}}catch(e){}}
+function saveState(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(db));}catch(e){}}
+function genId(){return Date.now()+Math.floor(Math.random()*1000)}
+function todayStr(){return new Date().toLocaleDateString('es-AR')}
+function addOperation(d){const o={id:genId(),name:d.name,ticker:d.ticker.toUpperCase(),type:d.type||'accion',quantity:Number(d.quantity),buyPrice:Number(d.buyPrice),date:todayStr()};db.operations.push(o);saveState();return o}
+function addExpense(d){const e={id:genId(),name:d.name,amount:Number(d.amount),category:d.category||'otro',date:todayStr()};db.expenses.push(e);saveState();return e}
+function addIncome(d){const i={id:genId(),name:d.name,amount:Number(d.amount),category:d.category||'otro',date:todayStr()};db.incomes.push(i);saveState();return i}
+function deleteOperation(id){db.operations=db.operations.filter(o=>o.id!==id);saveState()}
+function deleteExpense(id){db.expenses=db.expenses.filter(e=>e.id!==id);saveState()}
+function deleteIncome(id){db.incomes=db.incomes.filter(i=>i.id!==id);saveState()}
+
+// ── PRICES ──
+const priceCache={};
+const CGIDS={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',ADA:'cardano',DOT:'polkadot',AVAX:'avalanche-2',MATIC:'matic-network',LINK:'chainlink',XRP:'ripple',LTC:'litecoin',BNB:'binancecoin',DOGE:'dogecoin',SHIB:'shiba-inu',UNI:'uniswap',ATOM:'cosmos',NEAR:'near',OP:'optimism',ARB:'arbitrum',WIF:'dogwifcoin',PEPE:'pepe',TON:'the-open-network',SUI:'sui'};
+const CRYPTO_SET=new Set(Object.keys(CGIDS));
+function isCrypto(ticker,type){return type==='cripto'||CRYPTO_SET.has(ticker.toUpperCase())}
+async function fetchCryptoPrice(ticker){const sym=ticker.toUpperCase();const id=CGIDS[sym]||sym.toLowerCase();try{const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,{signal:AbortSignal.timeout(8000)});if(!r.ok)return null;const d=await r.json();return d[id]?.usd??null;}catch{return null}}
+async function fetchStockPrice(ticker){const sym=encodeURIComponent(ticker.toUpperCase());for(const base of['https://query1.finance.yahoo.com','https://query2.finance.yahoo.com']){try{const r=await fetch(`${base}/v8/finance/chart/${sym}?interval=1d&range=1d`,{signal:AbortSignal.timeout(8000)});if(!r.ok)continue;const d=await r.json();const p=d?.chart?.result?.[0]?.meta?.regularMarketPrice;if(p)return p;}catch{continue}}return null}
+async function fetchPrice(ticker,type){return isCrypto(ticker,type)?await fetchCryptoPrice(ticker):await fetchStockPrice(ticker)}
+function getCurrentPrice(ticker){return priceCache[ticker.toUpperCase()]??null}
+function calcPnl(op){const invested=op.quantity*op.buyPrice;const cp=getCurrentPrice(op.ticker);const hasPnl=cp!==null;const cv=hasPnl?op.quantity*cp:invested;const pnl=cv-invested;const pnlPct=invested>0?(pnl/invested)*100:0;return{currentPrice:cp,currentValue:cv,pnl,pnlPct,hasPnl}}
+async function refreshAllPrices(){if(!db.operations.length)return;const unique=[...new Map(db.operations.map(o=>[`${o.ticker}:${o.type}`,o])).values()];await Promise.allSettled(unique.map(async({ticker,type})=>{const p=await fetchPrice(ticker,type);if(p!==null)priceCache[ticker.toUpperCase()]=p;}));const now=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const el=document.getElementById('last-upd');if(el)el.textContent=`Actualizado ${now}`}
+
+// ── RENDER ──
+const COLORS=['#22c55e','#3b82f6','#f97316','#a855f7','#eab308','#ec4899','#14b8a6','#6366f1'];
+const TYPE_COLORS={accion:'#3b82f6',etf:'#a855f7',cripto:'#f97316',bono:'#eab308',fondo:'#14b8a6',otro:'#6b7280'};
+function fmt(n,d=0){if(n===null||n===undefined||isNaN(n))return'—';return'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function fmtPct(n){if(n===null||isNaN(n))return'—';return(n>=0?'+':'')+Number(n).toFixed(2)+'%'}
+function pclass(n){return n===null?'':n>=0?'positive':'negative'}
+function psign(n){return n>=0?'+':''}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function setText(id,t){const e=document.getElementById(id);if(e)e.textContent=t}
+
+function calcTotals(){let ti=0,tc=0;db.operations.forEach(op=>{const{currentValue}=calcPnl(op);ti+=op.quantity*op.buyPrice;tc+=currentValue;});const pnl=tc-ti,pnlPct=ti>0?(pnl/ti)*100:0;const income=db.incomes.reduce((s,i)=>s+Number(i.amount),0);const expense=db.expenses.reduce((s,e)=>s+Number(e.amount),0);return{ti,tc,pnl,pnlPct,income,expense,balance:income-expense}}
+
+function renderSummary(){const{ti,tc,pnl,pnlPct,income,expense,balance}=calcTotals();setText('d-capital',fmt(tc));setText('d-invested',fmt(ti));setText('d-inv-count',`${db.operations.length} operaciones`);setText('d-income',fmt(income));setText('d-income-count',`${db.incomes.length} registros`);setText('d-expenses',fmt(expense));setText('d-exp-count',`${db.expenses.length} transacciones`);
+const pnlEl=document.getElementById('d-pnl');if(pnlEl){pnlEl.textContent=`${psign(pnl)}${fmt(pnl)}`;pnlEl.className=`metric-value ${pclass(pnl)}`}
+setText('d-pnl-pct',fmtPct(pnlPct));const pp=document.getElementById('d-pnl-pct');if(pp)pp.className=`metric-sub ${pclass(pnlPct)}`;
+const bal=document.getElementById('d-balance');if(bal){bal.textContent=`${psign(balance)}${fmt(balance)}`;bal.className=`metric-value ${pclass(balance)}`}}
+
+function opRowHTML(op,compact=false){const{currentPrice,currentValue,pnl,pnlPct,hasPnl}=calcPnl(op);const invested=op.quantity*op.buyPrice;const color=TYPE_COLORS[op.type]||TYPE_COLORS.otro;const qd=op.quantity%1===0?0:4;
+if(compact)return`<div class="row-item"><div class="row-left"><span class="type-dot" style="background:${color}"></span><div><div class="row-name">${esc(op.name)} <span class="ticker-chip">${op.ticker}</span></div><div class="row-sub">${op.quantity} u · compra ${fmt(op.buyPrice,2)}</div></div></div><div style="text-align:right"><div class="row-value ${pclass(pnl)}">${hasPnl?`${psign(pnl)}${fmt(pnl)}`:'…'}</div><div class="row-sub">${hasPnl?fmtPct(pnlPct):'—'}</div></div></div>`;
+return`<tr><td><span class="type-dot" style="background:${color}"></span><span class="asset-name">${esc(op.name)}</span></td><td><span class="ticker-chip">${op.ticker}</span></td><td class="r">${Number(op.quantity).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:qd})}</td><td class="r">${fmt(op.buyPrice,2)}</td><td class="r">${fmt(invested)}</td><td class="r">${hasPnl?fmt(currentPrice,2):'<span class="price-loading">cargando</span>'}</td><td class="r">${hasPnl?fmt(currentValue):'—'}</td><td class="r ${pclass(pnl)}">${hasPnl?`${psign(pnl)}${fmt(pnl)}`:'—'}</td><td class="r ${pclass(pnlPct)}">${hasPnl?fmtPct(pnlPct):'—'}</td><td class="r" style="color:var(--text-t);font-size:11px">${op.date}</td><td class="r"><button class="del-btn" onclick="handleDelOp(${op.id})">×</button></td></tr>`}
+
+function renderOps(){const tb=document.getElementById('ops-tbody'),footer=document.getElementById('ops-footer'),badge=document.getElementById('ops-badge');if(badge)badge.textContent=db.operations.length;if(!db.operations.length){if(tb)tb.innerHTML='<tr><td colspan="11" class="empty-state">Sin operaciones.</td></tr>';if(footer)footer.innerHTML='';return}
+if(tb)tb.innerHTML=db.operations.map(op=>opRowHTML(op,false)).join('');
+const{ti,tc,pnl,pnlPct}=calcTotals();if(footer)footer.innerHTML=`<div><div class="footer-label">Total invertido</div><div class="footer-value">${fmt(ti)}</div></div><div><div class="footer-label">Capital actual</div><div class="footer-value">${fmt(tc)}</div></div><div><div class="footer-label">PnL general</div><div class="footer-value ${pclass(pnl)}">${psign(pnl)}${fmt(pnl)} (${fmtPct(pnlPct)})</div></div>`}
+
+function renderDashOps(){const el=document.getElementById('dash-ops-list');if(!el)return;if(!db.operations.length){el.innerHTML='<p class="empty-state">Sin operaciones.</p>';return}el.innerHTML=db.operations.slice(-5).reverse().map(op=>opRowHTML(op,true)).join('')}
+
+function renderList(elId,items,valueKey,colorFn,deleteFn,isIncome=false){const el=document.getElementById(elId);if(!el)return;if(!items.length){el.innerHTML='<p class="empty-state">Sin registros.</p>';return}el.innerHTML=items.slice().reverse().map((item,i)=>`<div class="row-item"><div class="row-left"><span class="cat-dot" style="background:${colorFn(i)}"></span><div><div class="row-name">${esc(item.name)}</div><div class="row-sub">${item.category} · ${item.date}</div></div></div><div class="row-actions"><span class="row-value ${isIncome?'positive':''}">${fmt(item[valueKey])}</span><button class="del-btn" onclick="${deleteFn}(${item.id})">×</button></div></div>`).join('')}
+
+function renderBars(elId,items,catKey,amtKey,forceColor=null){const el=document.getElementById(elId);if(!el)return;if(!items.length){el.innerHTML='<p class="empty-state">Sin datos.</p>';return}const totals={};items.forEach(it=>{const c=it[catKey]||'otro';totals[c]=(totals[c]||0)+Number(it[amtKey])});const sorted=Object.entries(totals).sort((a,b)=>b[1]-a[1]);const max=sorted[0][1];el.innerHTML=sorted.map(([cat,amt],i)=>`<div class="bar-row"><div class="bar-label">${cat}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(amt/max*100)}%;background:${forceColor||COLORS[i%COLORS.length]}"></div></div><div class="bar-value">${fmt(amt)}</div></div>`).join('')}
+
+function renderDist(){const el=document.getElementById('dash-dist');if(!el)return;if(!db.operations.length){el.innerHTML='<p class="empty-state">Sin operaciones.</p>';return}const totals={};let grand=0;db.operations.forEach(op=>{const{currentValue}=calcPnl(op);totals[op.ticker]=(totals[op.ticker]||0)+currentValue;grand+=currentValue});el.innerHTML=Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([ticker,val],i)=>{const pct=grand>0?(val/grand)*100:0;const c=COLORS[i%COLORS.length];return`<div class="dist-row"><div class="dist-name"><span class="type-dot" style="background:${c}"></span>${ticker}</div><div style="display:flex;align-items:center;gap:10px"><div class="bar-track" style="width:80px"><div class="bar-fill" style="width:${Math.round(pct)}%;background:${c}"></div></div><div class="dist-pct">${pct.toFixed(1)}%</div></div></div>`}).join('')}
+
+function renderAll(){renderSummary();renderDashOps();renderOps();renderList('dash-inc-list',db.incomes,'amount',()=>'var(--green)','handleDelInc',true);renderList('exp-list',db.expenses,'amount',(i)=>COLORS[i%COLORS.length],'handleDelExp');renderList('inc-list',db.incomes,'amount',()=>'var(--green)','handleDelInc',true);renderBars('dash-exp-bars',db.expenses,'category','amount');renderBars('exp-bars',db.expenses,'category','amount');renderBars('inc-bars',db.incomes,'category','amount','var(--green)');renderDist()}
+
+function handleDelOp(id){deleteOperation(id);renderAll()}
+function handleDelExp(id){deleteExpense(id);renderAll()}
+function handleDelInc(id){deleteIncome(id);renderAll()}
+
+// ── NAVIGATION ──
+function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));const el=document.getElementById(`view-${v}`);if(el)el.classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.getAttribute('data-view')===v))}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showView(t.getAttribute('data-view'))));
+
+// ── CHAT ──
+const SYSTEM_PROMPT=`Sos un asistente financiero personal argentino. Respondé SOLO con JSON puro sin markdown:
+{"action":"add_operation"|"add_expense"|"add_income"|"query"|"none","data":{...},"reply":"..."}
+Para add_operation data: {name,ticker(símbolo real:AAPL/BTC/SPY/etc),quantity,buyPrice,type("accion"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
+Para add_expense data: {name,amount,category}
+Para add_income data: {name,amount,category}
+Respondé en español rioplatense, breve y amigable.`;
+const chatHistory=[];
+
+function appendMsg(txt,role){const msgs=document.getElementById('chat-msgs');const div=document.createElement('div');div.className=`msg ${role}`;div.innerHTML=txt.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;return div}
+function appendTyping(){const msgs=document.getElementById('chat-msgs');const div=document.createElement('div');div.className='msg assistant';div.id='typing-ind';div.innerHTML='<div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;return div}
+
+async function handleSend(){
+  const inp=document.getElementById('chat-input');
+  const btn=document.getElementById('send-btn');
+  const txt=inp.value.trim();
+  if(!txt)return;
+  appendMsg(txt,'user');
+  inp.value='';inp.style.height='auto';btn.disabled=true;
+  const typing=appendTyping();
+  chatHistory.push({role:'user',content:txt+`\n\nEstado: ops=${JSON.stringify(db.operations.slice(-5))}, gastos=${db.expenses.length}, ingresos=${db.incomes.length}`});
+  if(chatHistory.length>20)chatHistory.splice(0,2);
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system:SYSTEM_PROMPT,messages:chatHistory})});
+    const data=await res.json();
+    typing.remove();
+    if(!res.ok){appendMsg(`Error: ${data.error||res.status}`,'assistant');btn.disabled=false;return}
+    const raw=(data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
+    let parsed;try{parsed=JSON.parse(raw)}catch{parsed={action:'none',reply:raw}}
+    chatHistory.push({role:'assistant',content:parsed.reply||'Entendido.'});
+    if(parsed.action==='add_operation'&&parsed.data){
+      const op=addOperation(parsed.data);
+      appendMsg(parsed.reply||'Operación registrada.','assistant');
+      const price=await fetchPrice(op.ticker,op.type);
+      if(price!==null){priceCache[op.ticker.toUpperCase()]=price;const pnl=op.quantity*(price-op.buyPrice);const pct=(price-op.buyPrice)/op.buyPrice*100;const sign=pnl>=0?'+':'';appendMsg(`${pnl>=0?'🟢':'🔴'} ${op.ticker} cotiza $${price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · PnL: ${sign}$${Math.round(Math.abs(pnl)).toLocaleString()} (${sign}${pct.toFixed(2)}%)`,'assistant')}
+      else appendMsg(`No pude obtener el precio de ${op.ticker} ahora. Se va a actualizar automáticamente.`,'assistant');
+      renderAll();
+    }else if(parsed.action==='add_expense'&&parsed.data){addExpense(parsed.data);renderAll();appendMsg(parsed.reply||'Gasto registrado.','assistant')}
+    else if(parsed.action==='add_income'&&parsed.data){addIncome(parsed.data);renderAll();appendMsg(parsed.reply||'Ingreso registrado.','assistant')}
+    else appendMsg(parsed.reply||'Entendido.','assistant');
+  }catch(err){typing.remove();appendMsg(`Error al procesar: ${err.message}`,'assistant')}
+  btn.disabled=false;inp.focus();
+}
+
+const inp=document.getElementById('chat-input');
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSend()}});
+inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px'});
+document.getElementById('send-btn').addEventListener('click',handleSend);
+document.querySelectorAll('.qb').forEach(b=>b.addEventListener('click',()=>{inp.value=b.getAttribute('data-msg');inp.dispatchEvent(new Event('input'));handleSend()}));
+
+// ── REFRESH BUTTON ──
+document.getElementById('refresh-btn').addEventListener('click',async()=>{const btn=document.getElementById('refresh-btn');btn.classList.add('spinning');btn.disabled=true;await refreshAllPrices();renderAll();btn.classList.remove('spinning');btn.disabled=false});
+
+// ── INIT ──
+async function init(){loadState();renderAll();if(db.operations.length){await refreshAllPrices();renderAll()}setInterval(async()=>{if(db.operations.length&&!document.hidden){await refreshAllPrices();renderAll()}},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&db.operations.length)refreshAllPrices().then(renderAll)})}
+init();
+</script>
+</body>
+</html>
