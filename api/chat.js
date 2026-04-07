@@ -9,9 +9,7 @@ module.exports = async function handler(req, res) {
   if (req.body && req.body.__action === 'get_price') {
     const { ticker, type } = req.body;
     const sym = (ticker || '').toUpperCase();
-    const finnhubKey = process.env.FINNHUB_API_KEY;
 
-    // Criptos via CoinGecko (sin key)
     const CGIDS = {
       BTC:'bitcoin',ETH:'ethereum',SOL:'solana',ADA:'cardano',DOT:'polkadot',
       AVAX:'avalanche-2',MATIC:'matic-network',POL:'matic-network',LINK:'chainlink',
@@ -33,36 +31,52 @@ module.exports = async function handler(req, res) {
     const CRYPTO_SET = new Set(Object.keys(CGIDS));
     const isCrypto = type === 'cripto' || CRYPTO_SET.has(sym);
 
+    // ── CRIPTO via CoinGecko ──
     if (isCrypto) {
       const id = CGIDS[sym] || sym.toLowerCase();
       try {
         const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`);
         const d = await r.json();
         const price = d[id]?.usd ?? null;
-        return res.status(200).json({ price, source: 'coingecko' });
-      } catch {
-        return res.status(200).json({ price: null });
-      }
+        if (price) return res.status(200).json({ price, source: 'coingecko', currency: 'USD' });
+      } catch {}
+      return res.status(200).json({ price: null });
     }
 
-    // Acciones/ETFs via Finnhub (con key de env)
+    // ── CEDEAR via Yahoo Finance .BA (precio en ARS) ──
+    // Los CEDEARs en BYMA se identifican con sufijo .BA en Yahoo Finance
+    if (type === 'cedear') {
+      const cedearSym = sym.endsWith('.BA') ? sym : sym + '.BA';
+      for (const base of ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com']) {
+        try {
+          const r = await fetch(`${base}/v8/finance/chart/${cedearSym}?interval=1d&range=1d`);
+          if (!r.ok) continue;
+          const d = await r.json();
+          const price = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
+          if (price) return res.status(200).json({ price, source: 'yahoo_byma', currency: 'ARS', symbol: cedearSym });
+        } catch { continue; }
+      }
+      return res.status(200).json({ price: null });
+    }
+
+    // ── ACCIÓN/ETF via Finnhub (con key) ──
+    const finnhubKey = process.env.FINNHUB_API_KEY;
     if (finnhubKey) {
       try {
         const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${finnhubKey}`);
         const d = await r.json();
-        // Finnhub devuelve c = current price, 0 si no encuentra
-        if (d.c && d.c > 0) return res.status(200).json({ price: d.c, source: 'finnhub' });
+        if (d.c && d.c > 0) return res.status(200).json({ price: d.c, source: 'finnhub', currency: 'USD' });
       } catch {}
     }
 
-    // Fallback: Yahoo Finance server-side (sin CORS en el servidor)
+    // ── FALLBACK: Yahoo Finance server-side ──
     for (const base of ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com']) {
       try {
         const r = await fetch(`${base}/v8/finance/chart/${sym}?interval=1d&range=1d`);
         if (!r.ok) continue;
         const d = await r.json();
         const price = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
-        if (price) return res.status(200).json({ price, source: 'yahoo' });
+        if (price) return res.status(200).json({ price, source: 'yahoo', currency: 'USD' });
       } catch { continue; }
     }
 

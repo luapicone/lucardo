@@ -260,7 +260,7 @@ async function refreshAllPrices(){if(!db.operations.length)return;const unique=[
 
 // ── RENDER ──
 const COLORS=['#22c55e','#3b82f6','#f97316','#a855f7','#eab308','#ec4899','#14b8a6','#6366f1'];
-const TYPE_COLORS={accion:'#3b82f6',etf:'#a855f7',cripto:'#f97316',bono:'#eab308',fondo:'#14b8a6',otro:'#6b7280'};
+const TYPE_COLORS={accion:'#3b82f6',etf:'#a855f7',cripto:'#f97316',cedear:'#22c55e',bono:'#eab308',fondo:'#14b8a6',otro:'#6b7280'};
 function fmt(n,d=0){if(n===null||n===undefined||isNaN(n))return'—';return'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
 function fmtPct(n){if(n===null||isNaN(n))return'—';return(n>=0?'+':'')+Number(n).toFixed(2)+'%'}
 function pclass(n){return n===null?'':n>=0?'positive':'negative'}
@@ -307,7 +307,8 @@ const SYSTEM_PROMPT=`Sos un asistente financiero personal argentino. Respondé S
 Formato: {"action":"...","data":{...},"reply":"..."}
 
 Acciones disponibles:
-- "add_operation": data={name,ticker(símbolo real:AAPL/BTC/SPY/NVDA/MELI/etc),quantity,buyPrice,type("accion"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
+- "add_operation": data={name,ticker(símbolo real:AAPL/BTC/SPY/NVDA/MELI/etc),quantity,buyPrice,type("accion"|"cedear"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
+  IMPORTANTE: Si el usuario menciona CEDEAR, registrá type="cedear". El ticker del CEDEAR es el símbolo sin .BA (ej: EWZD, GGAL, YPFD, MELI, MSFT, KO, AMZN, TSLA, DISN, etc)
 - "add_expense": data={name,amount,category}
 - "add_income": data={name,amount,category}
 - "delete_operation": data={id} — cuando el usuario pide eliminar/borrar una inversión u operación
@@ -346,7 +347,14 @@ async function handleSend(){
       const op=addOperation(parsed.data);
       appendMsg(parsed.reply||'Operación registrada.','assistant');
       const price=await fetchPrice(op.ticker,op.type);
-      if(price!==null){priceCache[op.ticker.toUpperCase()]=price;const pnl=op.quantity*(price-op.buyPrice);const pct=(price-op.buyPrice)/op.buyPrice*100;const sign=pnl>=0?'+':'';appendMsg(`${pnl>=0?'🟢':'🔴'} ${op.ticker} cotiza $${price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · PnL: ${sign}$${Math.round(Math.abs(pnl)).toLocaleString()} (${sign}${pct.toFixed(2)}%)`,'assistant')}
+      if(price!==null){
+        priceCache[op.ticker.toUpperCase()]=price;
+        const pnl=op.quantity*(price-op.buyPrice);
+        const pct=(price-op.buyPrice)/op.buyPrice*100;
+        const sign=pnl>=0?'+':'';
+        const cur=op.type==='cedear'?'$ARS ':'$';
+        appendMsg(`${pnl>=0?'🟢':'🔴'} ${op.ticker} cotiza ${cur}${price.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})} · PnL: ${sign}${cur}${Math.round(Math.abs(pnl)).toLocaleString()} (${sign}${pct.toFixed(2)}%)`,'assistant');
+      }
       else appendMsg(`No pude obtener el precio de ${op.ticker} ahora. Se actualizará automáticamente.`,'assistant');
       renderAll();
     }else if(parsed.action==='add_expense'&&parsed.data){addExpense(parsed.data);renderAll();appendMsg(parsed.reply||'Gasto registrado.','assistant')}
