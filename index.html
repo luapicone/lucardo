@@ -254,7 +254,7 @@ const CGIDS={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',ADA:'cardano',DOT:'polkad
 const CRYPTO_SET=new Set(Object.keys(CGIDS));
 function isCrypto(ticker,type){return type==='cripto'||CRYPTO_SET.has(ticker.toUpperCase())}
 async function fetchCryptoPrice(ticker){const sym=ticker.toUpperCase();const id=CGIDS[sym]||sym.toLowerCase();try{const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,{signal:AbortSignal.timeout(8000)});if(!r.ok)return null;const d=await r.json();return d[id]?.usd??null;}catch{return null}}
-async function fetchStockPrice(ticker){const sym=encodeURIComponent(ticker.toUpperCase());for(const base of['https://query1.finance.yahoo.com','https://query2.finance.yahoo.com']){try{const r=await fetch(`${base}/v8/finance/chart/${sym}?interval=1d&range=1d`,{signal:AbortSignal.timeout(8000)});if(!r.ok)continue;const d=await r.json();const p=d?.chart?.result?.[0]?.meta?.regularMarketPrice;if(p)return p;}catch{continue}}return null}
+async function fetchStockPrice(ticker){try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({__action:'stock_price',ticker})});if(!r.ok)return null;const d=await r.json();return d.price??null;}catch{return null}}
 async function fetchPrice(ticker,type){return isCrypto(ticker,type)?await fetchCryptoPrice(ticker):await fetchStockPrice(ticker)}
 function getCurrentPrice(ticker){return priceCache[ticker.toUpperCase()]??null}
 function calcPnl(op){const invested=op.quantity*op.buyPrice;const cp=getCurrentPrice(op.ticker);const hasPnl=cp!==null;const cv=hasPnl?op.quantity*cp:invested;const pnl=cv-invested;const pnlPct=invested>0?(pnl/invested)*100:0;return{currentPrice:cp,currentValue:cv,pnl,pnlPct,hasPnl}}
@@ -304,11 +304,22 @@ function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showView(t.getAttribute('data-view'))));
 
 // ── CHAT ──
-const SYSTEM_PROMPT=`Sos un asistente financiero personal argentino. Respondé SOLO con JSON puro sin markdown:
-{"action":"add_operation"|"add_expense"|"add_income"|"query"|"none","data":{...},"reply":"..."}
-Para add_operation data: {name,ticker(símbolo real:AAPL/BTC/SPY/etc),quantity,buyPrice,type("accion"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
-Para add_expense data: {name,amount,category}
-Para add_income data: {name,amount,category}
+const SYSTEM_PROMPT=`Sos un asistente financiero personal argentino. Respondé SOLO con JSON puro sin markdown ni backticks.
+
+Formato: {"action":"...","data":{...},"reply":"..."}
+
+Acciones disponibles:
+- "add_operation": data={name,ticker(símbolo real:AAPL/BTC/SPY/NVDA/MELI/etc),quantity,buyPrice,type("accion"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
+- "add_expense": data={name,amount,category}
+- "add_income": data={name,amount,category}
+- "delete_operation": data={id} — cuando el usuario pide eliminar/borrar una inversión u operación
+- "delete_expense": data={id} — cuando el usuario pide eliminar/borrar un gasto
+- "delete_income": data={id} — cuando el usuario pide eliminar/borrar un ingreso
+- "query": solo reply con análisis
+- "none": solo reply
+
+Para eliminar: buscá el item por nombre o ticker en el estado actual y devolvé su id numérico.
+Si hay ambigüedad, preguntá cuál eliminar.
 Respondé en español rioplatense, breve y amigable.`;
 const chatHistory=[];
 
@@ -323,7 +334,7 @@ async function handleSend(){
   appendMsg(txt,'user');
   inp.value='';inp.style.height='auto';btn.disabled=true;
   const typing=appendTyping();
-  chatHistory.push({role:'user',content:txt+`\n\nEstado: ops=${JSON.stringify(db.operations.slice(-5))}, gastos=${db.expenses.length}, ingresos=${db.incomes.length}`});
+  chatHistory.push({role:'user',content:txt+`\n\nEstado actual completo:\nOperaciones: ${JSON.stringify(db.operations)}\nGastos: ${JSON.stringify(db.expenses)}\nIngresos: ${JSON.stringify(db.incomes)}`});
   if(chatHistory.length>20)chatHistory.splice(0,2);
   try{
     const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system:SYSTEM_PROMPT,messages:chatHistory})});
@@ -338,10 +349,13 @@ async function handleSend(){
       appendMsg(parsed.reply||'Operación registrada.','assistant');
       const price=await fetchPrice(op.ticker,op.type);
       if(price!==null){priceCache[op.ticker.toUpperCase()]=price;const pnl=op.quantity*(price-op.buyPrice);const pct=(price-op.buyPrice)/op.buyPrice*100;const sign=pnl>=0?'+':'';appendMsg(`${pnl>=0?'🟢':'🔴'} ${op.ticker} cotiza $${price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} · PnL: ${sign}$${Math.round(Math.abs(pnl)).toLocaleString()} (${sign}${pct.toFixed(2)}%)`,'assistant')}
-      else appendMsg(`No pude obtener el precio de ${op.ticker} ahora. Se va a actualizar automáticamente.`,'assistant');
+      else appendMsg(`No pude obtener el precio de ${op.ticker} ahora. Se actualizará automáticamente.`,'assistant');
       renderAll();
     }else if(parsed.action==='add_expense'&&parsed.data){addExpense(parsed.data);renderAll();appendMsg(parsed.reply||'Gasto registrado.','assistant')}
     else if(parsed.action==='add_income'&&parsed.data){addIncome(parsed.data);renderAll();appendMsg(parsed.reply||'Ingreso registrado.','assistant')}
+    else if(parsed.action==='delete_operation'&&parsed.data?.id){deleteOperation(Number(parsed.data.id));renderAll();appendMsg(parsed.reply||'Operación eliminada.','assistant')}
+    else if(parsed.action==='delete_expense'&&parsed.data?.id){deleteExpense(Number(parsed.data.id));renderAll();appendMsg(parsed.reply||'Gasto eliminado.','assistant')}
+    else if(parsed.action==='delete_income'&&parsed.data?.id){deleteIncome(Number(parsed.data.id));renderAll();appendMsg(parsed.reply||'Ingreso eliminado.','assistant')}
     else appendMsg(parsed.reply||'Entendido.','assistant');
   }catch(err){typing.remove();appendMsg(`Error al procesar: ${err.message}`,'assistant')}
   btn.disabled=false;inp.focus();
