@@ -10,6 +10,7 @@ module.exports = async function handler(req, res) {
     const { ticker, type } = req.body;
     const sym = (ticker || '').toUpperCase();
 
+    // ── CRIPTO via CoinGecko ──
     const CGIDS = {
       BTC:'bitcoin',ETH:'ethereum',SOL:'solana',ADA:'cardano',DOT:'polkadot',
       AVAX:'avalanche-2',MATIC:'matic-network',POL:'matic-network',LINK:'chainlink',
@@ -31,7 +32,6 @@ module.exports = async function handler(req, res) {
     const CRYPTO_SET = new Set(Object.keys(CGIDS));
     const isCrypto = type === 'cripto' || CRYPTO_SET.has(sym);
 
-    // ── CRIPTO via CoinGecko ──
     if (isCrypto) {
       const id = CGIDS[sym] || sym.toLowerCase();
       try {
@@ -43,23 +43,37 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ price: null });
     }
 
-    // ── CEDEAR via Yahoo Finance .BA (precio en ARS) ──
-    // Los CEDEARs en BYMA se identifican con sufijo .BA en Yahoo Finance
+    // ── CEDEAR: busca en BYMA con sufijo .BA en Yahoo Finance ──
+    // El ticker BYMA puede ser JPMD, MELID, MUD, EWZD, MELI, GGAL, etc.
+    // Yahoo Finance los tiene como JPMD.BA, MELID.BA, MUD.BA, etc.
     if (type === 'cedear') {
-      const cedearSym = sym.endsWith('.BA') ? sym : sym + '.BA';
+      const bymaSymbol = sym.endsWith('.BA') ? sym : `${sym}.BA`;
       for (const base of ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com']) {
         try {
-          const r = await fetch(`${base}/v8/finance/chart/${cedearSym}?interval=1d&range=1d`);
+          const r = await fetch(`${base}/v8/finance/chart/${bymaSymbol}?interval=1d&range=1d`);
+          if (!r.ok) continue;
+          const d = await r.json();
+          const result = d?.chart?.result?.[0];
+          if (!result) continue;
+          const price = result.meta?.regularMarketPrice;
+          const currency = result.meta?.currency || 'USD';
+          if (price) return res.status(200).json({ price, source: 'yahoo_byma', currency, symbol: bymaSymbol });
+        } catch { continue; }
+      }
+      // Fallback: si no encuentra con .BA, intenta sin sufijo
+      for (const base of ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com']) {
+        try {
+          const r = await fetch(`${base}/v8/finance/chart/${sym}?interval=1d&range=1d`);
           if (!r.ok) continue;
           const d = await r.json();
           const price = d?.chart?.result?.[0]?.meta?.regularMarketPrice;
-          if (price) return res.status(200).json({ price, source: 'yahoo_byma', currency: 'ARS', symbol: cedearSym });
+          if (price) return res.status(200).json({ price, source: 'yahoo', currency: 'USD' });
         } catch { continue; }
       }
       return res.status(200).json({ price: null });
     }
 
-    // ── ACCIÓN/ETF via Finnhub (con key) ──
+    // ── ACCIÓN / ETF via Finnhub + Yahoo fallback ──
     const finnhubKey = process.env.FINNHUB_API_KEY;
     if (finnhubKey) {
       try {
@@ -68,8 +82,6 @@ module.exports = async function handler(req, res) {
         if (d.c && d.c > 0) return res.status(200).json({ price: d.c, source: 'finnhub', currency: 'USD' });
       } catch {}
     }
-
-    // ── FALLBACK: Yahoo Finance server-side ──
     for (const base of ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com']) {
       try {
         const r = await fetch(`${base}/v8/finance/chart/${sym}?interval=1d&range=1d`);
@@ -79,7 +91,6 @@ module.exports = async function handler(req, res) {
         if (price) return res.status(200).json({ price, source: 'yahoo', currency: 'USD' });
       } catch { continue; }
     }
-
     return res.status(200).json({ price: null });
   }
 

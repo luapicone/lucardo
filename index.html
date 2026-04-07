@@ -268,7 +268,8 @@ function psign(n){return n>=0?'+':''}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function setText(id,t){const e=document.getElementById(id);if(e)e.textContent=t}
 
-function calcTotals(){let ti=0,tc=0;db.operations.forEach(op=>{const{currentValue}=calcPnl(op);ti+=op.quantity*op.buyPrice;tc+=currentValue;});const pnl=tc-ti,pnlPct=ti>0?(pnl/ti)*100:0;const income=db.incomes.reduce((s,i)=>s+Number(i.amount),0);const expense=db.expenses.reduce((s,e)=>s+Number(e.amount),0);return{ti,tc,pnl,pnlPct,income,expense,balance:income-expense}}
+function opCurrency(op){return op.type==='cedear'?'ARS':'USD'}
+function fmtCur(n,op,d=0){if(n===null||n===undefined||isNaN(n))return'—';const cur=opCurrency(op);const sym=cur==='ARS'?'$':'U$S ';return sym+Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d})}let ti=0,tc=0;db.operations.forEach(op=>{const{currentValue}=calcPnl(op);ti+=op.quantity*op.buyPrice;tc+=currentValue;});const pnl=tc-ti,pnlPct=ti>0?(pnl/ti)*100:0;const income=db.incomes.reduce((s,i)=>s+Number(i.amount),0);const expense=db.expenses.reduce((s,e)=>s+Number(e.amount),0);return{ti,tc,pnl,pnlPct,income,expense,balance:income-expense}}
 
 function renderSummary(){const{ti,tc,pnl,pnlPct,income,expense,balance}=calcTotals();setText('d-capital',fmt(tc));setText('d-invested',fmt(ti));setText('d-inv-count',`${db.operations.length} operaciones`);setText('d-income',fmt(income));setText('d-income-count',`${db.incomes.length} registros`);setText('d-expenses',fmt(expense));setText('d-exp-count',`${db.expenses.length} transacciones`);
 const pnlEl=document.getElementById('d-pnl');if(pnlEl){pnlEl.textContent=`${psign(pnl)}${fmt(pnl)}`;pnlEl.className=`metric-value ${pclass(pnl)}`}
@@ -307,8 +308,14 @@ const SYSTEM_PROMPT=`Sos un asistente financiero personal argentino. Respondé S
 Formato: {"action":"...","data":{...},"reply":"..."}
 
 Acciones disponibles:
-- "add_operation": data={name,ticker(símbolo real:AAPL/BTC/SPY/NVDA/MELI/etc),quantity,buyPrice,type("accion"|"cedear"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
-  IMPORTANTE: Si el usuario menciona CEDEAR, registrá type="cedear". El ticker del CEDEAR es el símbolo sin .BA (ej: EWZD, GGAL, YPFD, MELI, MSFT, KO, AMZN, TSLA, DISN, etc)
+- "add_operation": data={name,ticker,quantity,buyPrice,type("accion"|"cedear"|"cripto"|"etf"|"bono"|"fondo"|"otro")}
+
+REGLAS CRÍTICAS DE TICKERS:
+• CEDEARs: usá el ticker EXACTO de BYMA tal como lo dice el usuario (JPMD, MELID, MUD, EWZD, GGAL, YPFD, MELI, MSFT, AAPL, AMZND, DISN, etc.). NO conviertas ni cambies el ticker. Siempre type="cedear".
+• Acciones USA: ticker normal (AAPL, NVDA, TSLA, JPM, MU, etc.), type="accion"
+• ETFs USA: ticker normal (SPY, QQQ, EWZ, etc.), type="etf"
+• Criptos: ticker del símbolo (BTC, ETH, SOL, etc.), type="cripto"
+• NUNCA inventes tickers. Si el usuario no menciona el ticker exacto, preguntale.
 - "add_expense": data={name,amount,category}
 - "add_income": data={name,amount,category}
 - "delete_operation": data={id} — cuando el usuario pide eliminar/borrar una inversión u operación
