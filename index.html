@@ -118,7 +118,28 @@ td.empty-state{text-align:center;padding:20px}
 .btn-cancel{padding:8px 16px;border:1px solid var(--border-md);border-radius:8px;background:transparent;color:var(--text-s);font-size:13px;cursor:pointer;font-family:var(--sans)}
 .btn-confirm{padding:8px 16px;border:none;border-radius:8px;background:var(--green);color:#000;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)}
 
-/* CHAT */
+/* SIGNALS */
+.signals-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.signal-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:12px}
+.signal-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.signal-asset{display:flex;align-items:center;gap:10px}
+.signal-name{font-size:14px;font-weight:500}
+.signal-price{font-family:var(--mono);font-size:13px;color:var(--text-s)}
+.verdict-badge{padding:5px 12px;border-radius:99px;font-size:12px;font-weight:500;border:1px solid}
+.signal-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;padding:10px;background:var(--bg-card);border-radius:var(--r)}
+.signal-meta-item{text-align:center}
+.signal-meta-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:3px}
+.signal-meta-value{font-family:var(--mono);font-size:12px;color:var(--text)}
+.signal-items{display:flex;flex-direction:column;gap:6px}
+.signal-item{display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:7px 10px;border-radius:var(--r);background:var(--bg-card)}
+.signal-item.bull{border-left:2px solid var(--green)}
+.signal-item.bear{border-left:2px solid var(--red)}
+.signal-item.neutral{border-left:2px solid var(--amber)}
+.signal-icon{font-size:14px;flex-shrink:0;line-height:1.4}
+.signal-text{color:var(--text-s);line-height:1.5}
+.signal-stage{display:inline-block;font-size:10px;padding:2px 8px;border-radius:99px;background:var(--bg-hover);border:1px solid var(--border-md);color:var(--text-s);margin-left:8px}
+.signal-loading{text-align:center;padding:20px;color:var(--text-t);font-size:13px}
+.signals-disclaimer{font-size:10px;color:var(--text-t);text-align:center;margin-top:16px;padding:10px;border:1px solid var(--border);border-radius:var(--r);line-height:1.6}
 .chat-sidebar{background:var(--bg-panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
 .chat-header{padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
 .chat-title{font-size:13px;font-weight:500}
@@ -160,6 +181,7 @@ td.empty-state{text-align:center;padding:20px}
     <button class="tab" data-view="exp">Gastos</button>
     <button class="tab" data-view="inc">Ingresos</button>
     <button class="tab" data-view="hist">Historial</button>
+      <button class="tab" data-view="signals">Señales</button>
   </nav>
   <div class="header-actions">
     <button class="icon-btn" id="refresh-btn">
@@ -238,6 +260,20 @@ td.empty-state{text-align:center;padding:20px}
         <div class="panel-header"><span class="panel-title">Historial de meses</span><span class="badge" id="hist-badge">0</span></div>
         <div id="hist-list"><p class="empty-state">Aún no cerraste ningún mes.</p></div>
       </div>
+    </section>
+
+    <section class="view" id="view-signals">
+      <div class="signals-header">
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--text)">Análisis técnico de tus posiciones</div>
+          <div style="font-size:11px;color:var(--text-t);margin-top:3px">Basado en Stage Analysis (Stan Weinstein) · EMA 20/50/200 · RSI 14 · Volumen</div>
+        </div>
+        <button class="icon-btn" id="refresh-signals-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Analizar
+        </button>
+      </div>
+      <div id="signals-list"><p class="empty-state" style="margin-top:20px">Hacé click en "Analizar" para obtener señales de tus posiciones.</p></div>
     </section>
 
   </main>
@@ -417,7 +453,122 @@ function handleDelOp(id){deleteOperation(id);renderAll()}
 function handleDelExp(id){deleteExpense(id);renderAll()}
 function handleDelInc(id){deleteIncome(id);renderAll()}
 
-// ── NAVIGATION ──
+// ── SIGNALS ──
+async function loadSignals() {
+  const el = document.getElementById('signals-list');
+  const btn = document.getElementById('refresh-signals-btn');
+  if (!db.operations.length) {
+    el.innerHTML = '<p class="empty-state" style="margin-top:20px">No tenés operaciones registradas todavía.</p>';
+    return;
+  }
+
+  el.innerHTML = '<div class="signal-loading">Analizando tus posiciones... puede tardar unos segundos.</div>';
+  btn.disabled = true;
+  btn.classList.add('spinning');
+
+  // Deduplica por ticker
+  const unique = [...new Map(db.operations.map(o => [o.ticker, o])).values()];
+
+  const results = await Promise.allSettled(
+    unique.map(op =>
+      fetch('/api/signals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: op.ticker, type: op.type }),
+      }).then(r => r.json())
+    )
+  );
+
+  btn.disabled = false;
+  btn.classList.remove('spinning');
+
+  const signals = results
+    .filter(r => r.status === 'fulfilled' && !r.value.error)
+    .map(r => r.value);
+
+  if (!signals.length) {
+    el.innerHTML = '<p class="empty-state" style="margin-top:20px">No se pudieron obtener datos para analizar. Intentá de nuevo.</p>';
+    return;
+  }
+
+  // Ordena: compra fuerte primero, venta fuerte último
+  signals.sort((a, b) => b.score - a.score);
+
+  el.innerHTML = signals.map(s => {
+    const rsiStr = s.rsi != null ? s.rsi.toFixed(1) : '—';
+    const e20Str = s.ema20  ? `$${s.ema20.toFixed(2)}`  : '—';
+    const e50Str = s.ema50  ? `$${s.ema50.toFixed(2)}`  : '—';
+    const e200Str= s.ema200 ? `$${s.ema200.toFixed(2)}` : '—';
+    const volStr = s.volRatio ? `${s.volRatio.toFixed(1)}x` : '—';
+
+    // Color del badge de veredicto
+    const verdictBg = s.score >= 5  ? 'rgba(34,197,94,0.15)'   :
+                      s.score >= 2  ? 'rgba(134,239,172,0.15)' :
+                      s.score >= -1 ? 'rgba(234,179,8,0.15)'   :
+                      s.score >= -4 ? 'rgba(252,165,165,0.15)' :
+                                      'rgba(239,68,68,0.15)';
+
+    return `
+    <div class="signal-card">
+      <div class="signal-card-header">
+        <div class="signal-asset">
+          <span class="ticker-chip" style="font-size:13px;padding:4px 10px">${esc(s.ticker)}</span>
+          <div>
+            <span class="signal-name">${esc(s.ticker)}</span>
+            <span class="signal-stage">${esc(s.stage)}</span>
+          </div>
+          <span class="signal-price">$${s.currentPrice.toFixed(2)}</span>
+        </div>
+        <div class="verdict-badge" style="color:${s.verdictColor};border-color:${s.verdictColor};background:${verdictBg}">
+          ${s.verdictIcon} ${s.verdict}
+        </div>
+      </div>
+
+      <div class="signal-meta">
+        <div class="signal-meta-item">
+          <div class="signal-meta-label">RSI 14</div>
+          <div class="signal-meta-value" style="color:${s.rsi < 30 ? 'var(--green)' : s.rsi > 70 ? 'var(--red)' : 'var(--text)'}">${rsiStr}</div>
+        </div>
+        <div class="signal-meta-item">
+          <div class="signal-meta-label">EMA 50</div>
+          <div class="signal-meta-value">${e50Str}</div>
+        </div>
+        <div class="signal-meta-item">
+          <div class="signal-meta-label">EMA 200</div>
+          <div class="signal-meta-value">${e200Str}</div>
+        </div>
+        <div class="signal-meta-item">
+          <div class="signal-meta-label">Volumen</div>
+          <div class="signal-meta-value" style="color:${s.volRatio > 1.5 ? 'var(--amber)' : 'var(--text)'}">${volStr}</div>
+        </div>
+      </div>
+
+      <div class="signal-items">
+        ${(s.signals || []).map(sig => `
+          <div class="signal-item ${sig.bull === true ? 'bull' : sig.bull === false ? 'bear' : 'neutral'}">
+            <span class="signal-icon">${sig.icon}</span>
+            <span class="signal-text">${esc(sig.text)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('') + `
+  <div class="signals-disclaimer">
+    ⚠️ Esto es análisis técnico informativo, no es asesoramiento financiero.<br>
+    Estrategia: Stage Analysis (Stan Weinstein) + EMA 20/50/200 + RSI 14 (Welles Wilder) + Análisis de volumen.<br>
+    Siempre hacé tu propio análisis antes de operar.
+  </div>`;
+}
+
+document.getElementById('refresh-signals-btn').addEventListener('click', loadSignals);
+
+// Auto-carga señales al entrar a la pestaña
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    if (t.getAttribute('data-view') === 'signals' && db.operations.length) {
+      loadSignals();
+    }
+  });
+});
 function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));const el=document.getElementById(`view-${v}`);if(el)el.classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.getAttribute('data-view')===v))}
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showView(t.getAttribute('data-view'))));
 
