@@ -268,8 +268,7 @@ function psign(n){return n>=0?'+':''}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function setText(id,t){const e=document.getElementById(id);if(e)e.textContent=t}
 
-function opCurrency(op){return op.type==='cedear'?'ARS':'USD'}
-function fmtCur(n,op,d=0){if(n===null||n===undefined||isNaN(n))return'—';const cur=opCurrency(op);const sym=cur==='ARS'?'$':'U$S ';return sym+Number(n).toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d})}let ti=0,tc=0;db.operations.forEach(op=>{const{currentValue}=calcPnl(op);ti+=op.quantity*op.buyPrice;tc+=currentValue;});const pnl=tc-ti,pnlPct=ti>0?(pnl/ti)*100:0;const income=db.incomes.reduce((s,i)=>s+Number(i.amount),0);const expense=db.expenses.reduce((s,e)=>s+Number(e.amount),0);return{ti,tc,pnl,pnlPct,income,expense,balance:income-expense}}
+function calcTotals(){let ti=0,tc=0;db.operations.forEach(op=>{const{currentValue}=calcPnl(op);ti+=op.quantity*op.buyPrice;tc+=currentValue;});const pnl=tc-ti,pnlPct=ti>0?(pnl/ti)*100:0;const income=db.incomes.reduce((s,i)=>s+Number(i.amount),0);const expense=db.expenses.reduce((s,e)=>s+Number(e.amount),0);return{ti,tc,pnl,pnlPct,income,expense,balance:income-expense}}
 
 function renderSummary(){const{ti,tc,pnl,pnlPct,income,expense,balance}=calcTotals();setText('d-capital',fmt(tc));setText('d-invested',fmt(ti));setText('d-inv-count',`${db.operations.length} operaciones`);setText('d-income',fmt(income));setText('d-income-count',`${db.incomes.length} registros`);setText('d-expenses',fmt(expense));setText('d-exp-count',`${db.expenses.length} transacciones`);
 const pnlEl=document.getElementById('d-pnl');if(pnlEl){pnlEl.textContent=`${psign(pnl)}${fmt(pnl)}`;pnlEl.className=`metric-value ${pclass(pnl)}`}
@@ -359,8 +358,8 @@ async function handleSend(){
         const pnl=op.quantity*(price-op.buyPrice);
         const pct=(price-op.buyPrice)/op.buyPrice*100;
         const sign=pnl>=0?'+':'';
-        const cur=op.type==='cedear'?'$ARS ':'$';
-        appendMsg(`${pnl>=0?'🟢':'🔴'} ${op.ticker} cotiza ${cur}${price.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2})} · PnL: ${sign}${cur}${Math.round(Math.abs(pnl)).toLocaleString()} (${sign}${pct.toFixed(2)}%)`,'assistant');
+        const cur='$';
+        appendMsg(`${pnl>=0?'🟢':'🔴'} ${op.ticker} cotiza ${cur}${price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} USD · PnL: ${sign}${cur}${Math.abs(pnl).toFixed(2)} (${sign}${pct.toFixed(2)}%)`,'assistant');
       }
       else appendMsg(`No pude obtener el precio de ${op.ticker} ahora. Se actualizará automáticamente.`,'assistant');
       renderAll();
