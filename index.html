@@ -876,9 +876,6 @@ function renderSpotCard(s) {
   const projColor = (p) => p >= cur ? 'var(--green)' : 'var(--red)';
 
   const proj = s.projections || {};
-  const st = proj.short  || [];   // 7,14,21 días
-  const mt = proj.medium || [];   // 30,60,90 días
-  const lt = proj.long   || [];   // 90,180,365 días
 
   const fib = s.fibonacci || {};
   const sup = s.supports || [];
@@ -920,24 +917,59 @@ function renderSpotCard(s) {
       </div>
     </div>
 
-    <!-- Proyección de precios -->
+    <!-- Proyección de precios (ATR + volatilidad histórica) -->
     <div style="margin-bottom:12px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">📊 Proyección por regresión lineal</div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">📊 Rangos de precio por volatilidad histórica (ATR)</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
         <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
           <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Corto plazo</div>
-          ${st.map(p=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-top:1px"><span>Rango: ${fmtP(p.lower)}-${fmtP(p.upper)}</span><span>R²:${p.confidence?Number(p.confidence).toFixed(2):'—'}</span></div></div>`).join('')}
+          ${(proj.short||[]).map(p=>`<div style="padding:4px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="color:var(--text-t)">${p.label}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:var(--green);font-family:var(--mono)">${fmtP(p.upper)}</span>
+              <span style="font-size:10px;color:var(--text-t)">↑ max</span>
+            </div>
+            ${p.pivot?`<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--amber)"><span style="font-family:var(--mono)">${fmtP(p.pivot)}</span><span>EMA objetivo</span></div>`:''}
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:var(--red);font-family:var(--mono)">${fmtP(p.lower)}</span>
+              <span style="font-size:10px;color:var(--text-t)">↓ min</span>
+            </div>
+          </div>`).join('')}
+          <div style="font-size:10px;color:var(--text-t);margin-top:4px">Vol diaria: ${proj.dailyVolPct||'—'}%</div>
         </div>
         <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
           <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Mediano plazo</div>
-          ${mt.map(p=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-top:1px"><span>Rango: ${fmtP(p.lower)}-${fmtP(p.upper)}</span><span>R²:${p.confidence?Number(p.confidence).toFixed(2):'—'}</span></div></div>`).join('')}
+          ${(proj.medium||[]).map(p=>`<div style="padding:4px 0;border-bottom:1px solid var(--border)">
+            <div style="font-size:11px;color:var(--text-t);margin-bottom:2px">${p.label}</div>
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:var(--green);font-family:var(--mono)">${fmtP(p.upper)}</span>
+              <span style="font-size:10px;color:var(--text-t)">↑</span>
+            </div>
+            ${p.pivot?`<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--amber)"><span style="font-family:var(--mono)">${fmtP(p.pivot)}</span><span>EMA</span></div>`:''}
+            <div style="display:flex;justify-content:space-between;font-size:11px">
+              <span style="color:var(--red);font-family:var(--mono)">${fmtP(p.lower)}</span>
+              <span style="font-size:10px;color:var(--text-t)">↓</span>
+            </div>
+          </div>`).join('')}
         </div>
         <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
-          <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Largo plazo</div>
-          ${lt.map(p=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-top:1px"><span>Rango: ${fmtP(p.lower)}-${fmtP(p.upper)}</span><span>R²:${p.confidence?Number(p.confidence).toFixed(2):'—'}</span></div></div>`).join('')}
+          <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Largo plazo (1 año)</div>
+          ${(proj.long||[]).map(p=>`<div style="padding:4px 0">
+            <div style="font-size:11px;color:var(--text-t);margin-bottom:4px">${p.note||p.label}</div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+              <span style="color:var(--text-t)">Escenario alto</span>
+              <span style="color:var(--green);font-family:var(--mono)">${fmtP(p.upper)} <span style="font-size:10px">${pctChg(cur,p.upper)}</span></span>
+            </div>
+            ${p.pivot?`<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:var(--text-t)">EMA 200</span><span style="color:var(--amber);font-family:var(--mono)">${fmtP(p.pivot)}</span></div>`:''}
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span style="color:var(--text-t)">Escenario bajo</span>
+              <span style="color:var(--red);font-family:var(--mono)">${fmtP(p.lower)} <span style="font-size:10px">${pctChg(cur,p.lower)}</span></span>
+            </div>
+          </div>`).join('')}
+          <div style="font-size:10px;color:var(--text-t);margin-top:8px;border-top:1px solid var(--border);padding-top:6px">Basado en máx/mín 52 semanas</div>
         </div>
       </div>
-      <div style="font-size:9px;color:var(--text-t);margin-top:5px;text-align:center">⚠️ Proyección basada en regresión lineal de tendencia histórica — no garantiza resultados futuros</div>
+      <div style="font-size:9px;color:var(--text-t);margin-top:5px;text-align:center">Rangos calculados con volatilidad histórica (1 sigma). Las EMAs son imanes naturales de precio según Weinstein.</div>
     </div>
 
     <!-- Fibonacci + Soporte/Resistencia -->
