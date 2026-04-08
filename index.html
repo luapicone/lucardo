@@ -573,295 +573,347 @@ function handleDelExp(id){deleteExpense(id);renderAll()}
 function handleDelInc(id){deleteIncome(id);renderAll()}
 
 // ── SIGNALS ──
-// ── SIGNALS ──
-let _lastSignalData = null;
+let _sigData = null;
 
-function bindQuickTickers() {
-  document.querySelectorAll('.qt').forEach(b => {
-    b.removeEventListener('click', b._sigHandler);
-    b._sigHandler = () => {
-      document.getElementById('sig-ticker-input').value = b.getAttribute('data-t');
-      const typeVal = b.getAttribute('data-type');
-      if (typeVal) document.getElementById('sig-type-sel').value = typeVal;
-      runSignal();
-    };
-    b.addEventListener('click', b._sigHandler);
+// Wire up quick ticker buttons
+document.querySelectorAll('.qt').forEach(function(b) {
+  b.addEventListener('click', function() {
+    document.getElementById('sig-ticker-input').value = b.getAttribute('data-t');
+    var tp = b.getAttribute('data-type');
+    if (tp) document.getElementById('sig-type-sel').value = tp;
+    runSignal();
   });
-}
-bindQuickTickers();
+});
 
-document.getElementById('sig-ticker-input').addEventListener('keydown', e => {
+document.getElementById('sig-ticker-input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') runSignal();
 });
-document.getElementById('sig-ticker-input').addEventListener('input', e => {
+document.getElementById('sig-ticker-input').addEventListener('input', function(e) {
   e.target.value = e.target.value.toUpperCase();
 });
 document.getElementById('refresh-signals-btn').addEventListener('click', runSignal);
 
 async function runSignal() {
-  const ticker = (document.getElementById('sig-ticker-input').value || '').trim().toUpperCase();
-  const type   = document.getElementById('sig-type-sel').value;
-  const el     = document.getElementById('signals-list');
-  const btn    = document.getElementById('refresh-signals-btn');
-  if (!ticker) { el.innerHTML = '<p class="empty-state">Ingresá un ticker primero.</p>'; return; }
-
-  el.innerHTML = `<div class="signal-loading">Analizando ${esc(ticker)} con análisis técnico multi-estrategia...</div>`;
+  var ticker = (document.getElementById('sig-ticker-input').value || '').trim().toUpperCase();
+  var type   = document.getElementById('sig-type-sel').value;
+  var el     = document.getElementById('signals-list');
+  var btn    = document.getElementById('refresh-signals-btn');
+  if (!ticker) { el.innerHTML = '<p class="empty-state">Escribí un ticker arriba y presioná Analizar.</p>'; return; }
+  el.innerHTML = '<div class="signal-loading">Analizando ' + esc(ticker) + '... esto puede tardar unos segundos.</div>';
   btn.disabled = true; btn.classList.add('spinning');
-
   try {
-    const r = await fetch('/api/signals', {
+    var r = await fetch('/api/signals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker, type }),
+      body: JSON.stringify({ ticker: ticker, type: type })
     });
-    const s = await r.json();
+    var s = await r.json();
     btn.disabled = false; btn.classList.remove('spinning');
-
-    if (s.error) {
-      el.innerHTML = `<p class="empty-state" style="color:var(--red)">${esc(s.error)}</p>`;
-      return;
-    }
-
-    _lastSignalData = s;
-    el.innerHTML = renderSpotCard(s);
+    if (s.error) { el.innerHTML = '<p class="empty-state" style="color:var(--red)">' + esc(s.error) + '</p>'; return; }
+    _sigData = s;
+    el.innerHTML = buildSignalCard(s);
   } catch(err) {
     btn.disabled = false; btn.classList.remove('spinning');
-    el.innerHTML = `<p class="empty-state" style="color:var(--red)">Error: ${err.message}</p>`;
+    el.innerHTML = '<p class="empty-state" style="color:var(--red)">Error de conexión: ' + esc(err.message) + '</p>';
   }
 }
 
-function fmt6(n) {
-  if (n == null) return '—';
-  const abs = Math.abs(n);
-  const d = abs >= 1000 ? 2 : abs >= 1 ? 4 : abs >= 0.01 ? 5 : 6;
+function fp(n, d) {
+  if (n == null || isNaN(n)) return '—';
+  d = d != null ? d : (Math.abs(n) >= 1000 ? 2 : Math.abs(n) >= 1 ? 4 : 6);
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: d });
 }
-function pctStr(n, cur) {
+function pp(val, base) {
+  if (!val || !base) return '';
+  var p = (val - base) / base * 100;
+  return (p >= 0 ? '+' : '') + p.toFixed(1) + '%';
+}
+function scoreBar(bull, bear) {
+  var total = bull + bear || 1;
+  var bullPct = Math.round(bull / total * 100);
+  var bearPct = 100 - bullPct;
+  return '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin:6px 0">'
+    + '<div style="width:' + bullPct + '%;background:var(--green);transition:width .4s"></div>'
+    + '<div style="width:' + bearPct + '%;background:var(--red);transition:width .4s"></div>'
+    + '</div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t)">'
+    + '<span style="color:var(--green)">' + bull + ' señales alcistas</span>'
+    + '<span style="color:var(--red)">' + bear + ' señales bajistas</span>'
+    + '</div>';
+}
+
+function buildSignalCard(s) {
+  var ind = s.indicators || {};
+  var cur = s.currentPrice;
+  var act = s.action || {};
+  var tgt = s.targets || {};
+  var scn = s.scenarios || [];
+  var fib = s.fibonacci || {};
+  var sigs = s.signals || [];
+  var chgC = s.changePercent >= 0 ? 'var(--green)' : 'var(--red)';
+  var chgSign = s.changePercent >= 0 ? '+' : '';
+  var vbg = s.totalScore >= 8  ? 'rgba(34,197,94,0.15)'   :
+            s.totalScore >= 5  ? 'rgba(134,239,172,0.12)' :
+            s.totalScore >= 2  ? 'rgba(167,243,208,0.1)'  :
+            s.totalScore >= -1 ? 'rgba(234,179,8,0.12)'   :
+            s.totalScore >= -4 ? 'rgba(252,165,165,0.12)' :
+                                 'rgba(239,68,68,0.15)';
+  var assetLabel = s.assetType==='crypto' ? 'Criptomoneda' : s.assetType==='cedear' ? 'CEDEAR' : 'Acción / ETF';
+  var grouped = {};
+  sigs.forEach(function(sg){ if(!grouped[sg.category]) grouped[sg.category]=[]; grouped[sg.category].push(sg); });
+  var catColors = {'Weinstein':'#a855f7','Cruce EMAs':'#3b82f6','EMAs':'#3b82f6','MACD':'#f97316','RSI':'#22c55e','Bollinger':'#eab308','OBV':'#14b8a6','Estocástico':'#ec4899','Volumen':'#6366f1','Fibonacci':'#8b5cf6'};
+  var catExplain = {
+    'Weinstein':'¿Qué es? Muestra si el activo está en tendencia alcista (Stage 2), bajista (Stage 4), acumulando (Stage 1) o distribuyendo (Stage 3).',
+    'Cruce EMAs':'¿Qué es? El Golden Cross (EMA50 cruza arriba la EMA200) es la señal alcista de largo plazo más reconocida. El Death Cross es lo opuesto.',
+    'EMAs':'¿Qué son? Las medias móviles muestran el precio promedio de los últimos N días. Precio arriba de todas = tendencia alcista sana.',
+    'MACD':'¿Qué es? Mide la fuerza (momentum) del movimiento. Si cruza hacia arriba = señal de compra. Si cruza hacia abajo = señal de venta.',
+    'RSI':'¿Qué es? Indicador de 0 a 100. Menos de 30 = el activo está barato/sobrevendido (posible rebote). Más de 70 = caro/sobrecomprado (posible baja).',
+    'Bollinger':'¿Qué son? Bandas que muestran el rango normal de precio. Si el precio toca la banda inferior, suele rebotar. Si toca la superior, suele corregir.',
+    'OBV':'¿Qué es? Suma el volumen en días de suba y resta en días de baja. Si sube antes que el precio, hay acumulación silenciosa.',
+    'Estocástico':'¿Qué es? Mide la velocidad del movimiento. Por debajo de 20 = zona de compra. Por encima de 80 = zona de venta.',
+    'Volumen':'¿Qué es? Cuántas unidades se negociaron. Un movimiento con mucho volumen es más confiable que uno con poco.',
+    'Fibonacci':'¿Qué son? Niveles matemáticos donde el precio frecuentemente rebota. Son zonas de soporte y resistencia "naturales".',
+  };
+  var obvIcon = ind.obvTrend==='rising' ? '↑' : ind.obvTrend==='falling' ? '↓' : '→';
+  var obvColor = ind.obvTrend==='rising' ? 'var(--green)' : ind.obvTrend==='falling' ? 'var(--red)' : 'var(--text-s)';
+
+  var h = '';
+  h += '<div class="signal-card spot-card" style="border-color:' + s.verdictColor + '33">';
+
+  // HEADER
+  h += '<div class="signal-card-header">';
+  h += '<div class="signal-asset">';
+  h += '<span class="ticker-chip" style="font-size:14px;padding:5px 12px;background:' + s.verdictColor + '22;border-color:' + s.verdictColor + '55;color:' + s.verdictColor + '">' + esc(s.ticker) + '</span>';
+  h += '<div><div style="font-size:11px;color:var(--text-t)">' + esc(assetLabel) + ' · ' + esc(s.stage||'') + '</div>';
+  h += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:2px"><span style="font-family:var(--mono);font-size:16px;font-weight:600">' + fp(cur) + '</span>';
+  h += '<span style="font-size:12px;color:' + chgC + '">' + chgSign + s.changePercent + '% hoy</span></div></div></div>';
+  h += '<div style="text-align:right"><div class="verdict-badge" style="color:' + s.verdictColor + ';border-color:' + s.verdictColor + ';background:' + vbg + ';font-size:13px;padding:7px 16px;margin-bottom:6px">' + s.verdictIcon + ' ' + esc(s.verdict) + '</div>';
+  h += '<div style="font-size:10px;color:var(--text-t)">Señales ↑<span style="color:var(--green)">' + (s.bullScore||0) + '</span> vs ↓<span style="color:var(--red)">' + (s.bearScore||0) + '</span></div></div></div>';
+
+  // RESUMEN EN PALABRAS SIMPLES
+  var stageDesc = s.stage && s.stage.includes('Stage 2') ?
+    'El activo está en tendencia alcista activa (Stage 2 de Weinstein). La media de 30 días sube y el precio está por encima. Es la fase ideal para tener o agregar posición.' :
+    s.stage && s.stage.includes('Stage 4') ?
+    'El activo está en tendencia bajista (Stage 4 de Weinstein). La media de 30 días cae y el precio está por debajo. No es momento de comprar; es momento de proteger capital.' :
+    s.stage && s.stage.includes('Stage 3') ?
+    'El activo está distribuyendo (Stage 3 de Weinstein). Los grandes inversores están vendiendo gradualmente. La tendencia alcista se agota.' :
+    'El activo está acumulando sin tendencia definida (Stage 1 de Weinstein). Es zona de base. Hay que esperar señal clara antes de entrar.';
+
+  var macdDesc = ind.macdLine > ind.macdSignal ?
+    'El MACD está por encima de su línea de señal — hay momentum comprador activo. El movimiento tiene fuerza.' :
+    'El MACD está por debajo de su línea de señal — hay momentum vendedor. El movimiento a la baja tiene fuerza.';
+
+  var rsiDesc = ind.rsi < 30 ? 'RSI en ' + (ind.rsi||0).toFixed(0) + ': SOBREVENTA. El precio bajó demasiado rápido y podría rebotar técnicamente. Zona de interés para compradores.' :
+    ind.rsi > 70 ? 'RSI en ' + (ind.rsi||0).toFixed(0) + ': SOBRECOMPRA. El precio subió muy rápido y podría necesitar una corrección antes de seguir.' :
+    'RSI en ' + (ind.rsi||0).toFixed(0) + ': zona ' + (ind.rsi > 50 ? 'de fuerza (>50), acompañando el movimiento alcista sin sobrecompra.' : 'de debilidad (<50), sin momentum comprador claro.');
+
+  var obvDesc = ind.obvTrend==='rising' ? 'El volumen neto aumenta — hay más dinero entrando que saliendo. Señal de acumulación real (los "grandes" compran).' :
+    ind.obvTrend==='falling' ? 'El volumen neto cae — hay más dinero saliendo que entrando. Señal de distribución (los "grandes" venden).' :
+    'El volumen está equilibrado — sin presión compradora ni vendedora dominante.';
+
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:10px">💬 ¿Qué dice el análisis en palabras simples?</div>';
+  h += '<p style="font-size:12px;color:var(--text-s);line-height:1.7;margin-bottom:6px">• <strong style="color:var(--text)">Tendencia:</strong> ' + esc(stageDesc) + '</p>';
+  h += '<p style="font-size:12px;color:var(--text-s);line-height:1.7;margin-bottom:6px">• <strong style="color:var(--text)">Fuerza del movimiento (MACD):</strong> ' + esc(macdDesc) + '</p>';
+  h += '<p style="font-size:12px;color:var(--text-s);line-height:1.7;margin-bottom:6px">• <strong style="color:var(--text)">Sobrecompra/venta (RSI):</strong> ' + esc(rsiDesc) + '</p>';
+  h += '<p style="font-size:12px;color:var(--text-s);line-height:1.7">• <strong style="color:var(--text)">Flujo de dinero (OBV):</strong> ' + esc(obvDesc) + '</p>';
+  h += '</div>';
+
+  // ACCIÓN RECOMENDADA
+  if (act.action) {
+    h += '<div class="action-box" style="background:' + act.actionColor + '15;border-color:' + act.actionColor + '55;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
+    h += '<div style="font-size:22px;font-weight:700;color:' + act.actionColor + '">' + act.actionIcon + ' ' + esc(act.action) + '</div>';
+    if (act.warning) h += '<span style="font-size:11px;padding:3px 10px;border-radius:99px;background:rgba(234,179,8,0.2);color:var(--amber);border:1px solid rgba(234,179,8,0.4)">' + esc(act.warning) + '</span>';
+    h += '</div><div style="font-size:11px;color:var(--text-t);margin-bottom:8px;font-weight:500">¿Por qué esta recomendación?</div><ul class="action-reasons">';
+    (act.reasons||[]).forEach(function(r){ h += '<li style="color:' + act.actionColor + 'cc;font-size:12px">' + esc(r) + '</li>'; });
+    h += '</ul></div>';
+  }
+
+  // INDICADORES GRID
+  h += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px">';
+  var indArr = [
+    ['RSI 14', ind.rsi!=null?ind.rsi.toFixed(1):'—', ind.rsi<30?'var(--green)':ind.rsi>70?'var(--red)':'var(--text)', ind.rsi<30?'Sobreventa':ind.rsi>70?'Sobrecompra':ind.rsi>50?'Fuerza':'Débil'],
+    ['MACD', ind.macdLine!=null?(ind.macdLine>0?'+':'')+ind.macdLine.toFixed(3):'—', ind.macdLine>ind.macdSignal?'var(--green)':'var(--red)', ind.macdLine>ind.macdSignal?'↑ Alcista':'↓ Bajista'],
+    ['Estocástico', ind.stochK!=null?ind.stochK.toFixed(0)+'%':'—', ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text)', ind.stochK<20?'Compra':ind.stochK>80?'Venta':'Neutral'],
+    ['Bollinger%', ind.bbPct!=null?(ind.bbPct*100).toFixed(0)+'%':'—', ind.bbPct>0.85?'var(--red)':ind.bbPct<0.15?'var(--green)':'var(--text)', ind.bbPct>0.85?'Zona alta':ind.bbPct<0.15?'Zona baja':'Centro'],
+    ['Volumen', obvIcon, obvColor, ind.obvTrend==='rising'?'Acumulando':ind.obvTrend==='falling'?'Vendiendo':'Lateral'],
+  ];
+  indArr.forEach(function(it){
+    h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:9px 8px;text-align:center">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">' + it[0] + '</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:600;color:' + it[2] + '">' + it[1] + '</div>';
+    h += '<div style="font-size:9px;color:var(--text-t);margin-top:2px">' + it[3] + '</div></div>';
+  });
+  h += '</div>';
+
+  // EMAs
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
+  h += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">Medias móviles — ¿el precio está por encima (✓) o por debajo (✗)?</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
+  [['MA 30','Tendencia principal',ind.ma30],['EMA 20','Corto plazo',ind.ema20],['EMA 50','Mediano plazo',ind.ema50],['EMA 200','Largo plazo',ind.ema200]].forEach(function(em){
+    var abv = em[2] && cur > em[2];
+    var col = em[2] ? (abv ? 'var(--green)' : 'var(--red)') : 'var(--text-t)';
+    h += '<div style="background:var(--bg-hover);border-radius:var(--r);padding:8px;text-align:center">';
+    h += '<div style="font-size:10px;font-weight:500;color:var(--text);margin-bottom:1px">' + em[0] + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:4px">' + em[1] + '</div>';
+    h += '<div style="font-family:var(--mono);font-size:11px;color:' + col + '">' + fp(em[2]) + '</div>';
+    h += '<div style="font-size:11px;margin-top:3px;color:' + col + ';font-weight:700">' + (em[2]?(abv?'✓ ARRIBA':'✗ ABAJO'):'—') + '</div></div>';
+  });
+  h += '</div>';
+  if (s.crossovers && s.crossovers.goldenCross) {
+    h += '<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(34,197,94,0.12);color:var(--green);font-size:12px">✨ <strong>Golden Cross activo:</strong> La media de 50 días cruzó hacia arriba la de 200 días. Es una de las señales alcistas de largo plazo más importantes.</div>';
+  } else if (s.crossovers && s.crossovers.deathCross) {
+    h += '<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.12);color:var(--red);font-size:12px">💀 <strong>Death Cross activo:</strong> La media de 50 días cruzó hacia abajo la de 200 días. Es una señal bajista importante de largo plazo.</div>';
+  }
+  h += '</div>';
+
+  // BOLLINGER
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
+  h += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">Bandas de Bollinger — donde está el precio en el rango de volatilidad</div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:8px">Cerca de la banda inferior → posible rebote. Cerca de la banda superior → posible corrección. El punto muestra dónde está el precio ahora.</div>';
+  var pctVal = ind.bbPct != null ? Math.min(Math.max(ind.bbPct*100,2),98) : 50;
+  h += '<div style="position:relative;height:28px;background:linear-gradient(to right,rgba(34,197,94,0.2),rgba(59,130,246,0.1),rgba(239,68,68,0.2));border-radius:4px;margin-bottom:8px;border:1px solid var(--border)">';
+  h += '<div style="position:absolute;top:2px;left:4px;font-size:9px;color:var(--text-t)">Sobrevendido</div>';
+  h += '<div style="position:absolute;top:2px;right:4px;font-size:9px;color:var(--text-t)">Sobrecomprado</div>';
+  if (ind.bbPct != null) h += '<div style="position:absolute;top:50%;transform:translate(-50%,-50%);left:' + pctVal + '%;width:14px;height:14px;border-radius:50%;background:' + s.verdictColor + ';box-shadow:0 0 8px ' + s.verdictColor + ';border:2px solid #fff"></div>';
+  h += '</div>';
+  h += '<div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)">';
+  h += '<span style="color:var(--green)">Inf: ' + fp(ind.bbLower) + '</span>';
+  h += '<span style="color:var(--text-s)">Med: ' + fp(ind.bbMid) + '</span>';
+  h += '<span style="color:var(--red)">Sup: ' + fp(ind.bbUpper) + '</span>';
+  h += '</div>';
+  if (ind.bbWidth < 0.05) h += '<div style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(234,179,8,0.12);font-size:11px;color:var(--amber)">⚡ <strong>Squeeze de Bollinger:</strong> Las bandas están muy comprimidas — hay muy poca volatilidad ahora, pero esto casi siempre precede un movimiento explosivo. Prestá atención al próximo breakout.</div>';
+  h += '</div>';
+
+  // TARGETS + S/R
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
+  h += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:6px">🎯 Objetivos de precio</div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:8px">Zonas donde el precio podría llegar o encontrar resistencia si sube.</div>';
+  (tgt.upside||[]).slice(0,3).forEach(function(t){
+    h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--border)">';
+    h += '<span style="color:var(--green)">▲ ' + esc(t.label) + (t.touches?' ('+t.touches+'× tocado)':'') + '</span>';
+    h += '<span style="font-family:var(--mono)">' + fp(t.price) + ' <span style="font-size:10px;color:var(--text-t)">' + ps(t.price,cur) + '</span></span></div>';
+  });
+  if (tgt.stopLoss) {
+    h += '<div style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3)">';
+    h += '<div style="font-size:10px;font-weight:600;color:var(--red);margin-bottom:2px">🛑 Stop Loss sugerido</div>';
+    h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:4px">Si el precio llega acá, la señal técnica se invalida. Conviene salir para limitar pérdidas.</div>';
+    h += '<div style="font-family:var(--mono);font-size:12px;color:var(--red)">' + fp(tgt.stopLoss.price) + ' (' + (tgt.stopLoss.distPct||'') + '%)</div></div>';
+  }
+  if (tgt.riskReward != null) {
+    var rrC = tgt.riskReward >= 2 ? 'var(--green)' : tgt.riskReward >= 1 ? 'var(--amber)' : 'var(--red)';
+    var rrT = tgt.riskReward >= 2 ? 'Buena oportunidad' : tgt.riskReward >= 1 ? 'Aceptable' : 'Poco favorable';
+    h += '<div style="font-size:11px;margin-top:8px">Riesgo/Recompensa: <span style="color:' + rrC + ';font-weight:600">1:' + tgt.riskReward + '</span> — ' + rrT + '</div>';
+  }
+  h += '</div>';
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
+  h += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:6px">📍 Soporte / Resistencia</div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:8px">Zonas históricas donde el precio frenó o rebotó múltiples veces.</div>';
+  h += '<div style="font-size:10px;color:var(--red);margin-bottom:4px;font-weight:600">Resistencias (techo)</div>';
+  var resItems = (tgt.upside||[]).slice(0,2);
+  if (resItems.length) resItems.forEach(function(t){ h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span>' + fp(t.price) + '</span><span style="color:var(--text-t)">' + ps(t.price,cur) + '</span></div>'; });
+  else h += '<div style="font-size:11px;color:var(--text-t)">No detectadas en rango</div>';
+  h += '<div style="border-top:1px dashed var(--border);margin:8px 0;text-align:center;font-size:11px;color:var(--text-t)">Precio actual: ' + fp(cur) + '</div>';
+  h += '<div style="font-size:10px;color:var(--green);margin-bottom:4px;font-weight:600">Soportes (piso)</div>';
+  var supItems = (tgt.downside||[]).slice(0,2);
+  if (supItems.length) supItems.forEach(function(t){ h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span>' + fp(t.price) + '</span><span style="color:var(--text-t)">' + ps(t.price,cur) + '</span></div>'; });
+  else h += '<div style="font-size:11px;color:var(--text-t)">No detectados en rango</div>';
+  h += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">';
+  h += '<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text-t)">Máximo 52 semanas</span><span style="font-family:var(--mono);color:var(--red)">' + fp(s.high52w) + '</span></div>';
+  h += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px"><span style="color:var(--text-t)">Mínimo 52 semanas</span><span style="font-family:var(--mono);color:var(--green)">' + fp(s.low52w) + '</span></div>';
+  h += '</div></div></div>';
+
+  // DIVERGENCIAS
+  if (s.divergences && (s.divergences.bullDiv || s.divergences.bearDiv)) {
+    var dBull = s.divergences.bullDiv;
+    var dC = dBull ? 'var(--green)' : 'var(--red)';
+    h += '<div style="padding:12px;border-radius:var(--r);margin-bottom:12px;background:' + (dBull?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)') + ';border:1px solid ' + (dBull?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)') + '">';
+    h += '<div style="font-size:13px;font-weight:600;color:' + dC + ';margin-bottom:6px">🔄 Divergencia ' + (dBull?'alcista':'bajista') + ' en RSI — señal importante</div>';
+    if (dBull) h += '<p style="font-size:12px;color:var(--text-s);line-height:1.6">El precio marcó un mínimo más bajo que el anterior, pero el RSI marcó un mínimo más alto. Esto significa que aunque el precio bajó, la presión vendedora se debilitó. Es una señal clásica de posible reversión al alza, muy utilizada por traders experimentados.</p>';
+    else h += '<p style="font-size:12px;color:var(--text-s);line-height:1.6">El precio marcó un máximo más alto que el anterior, pero el RSI marcó un máximo más bajo. Aunque el precio sigue subiendo, la presión compradora se debilita. Es una señal de posible agotamiento de la suba. Precaución si estás comprado.</p>';
+    h += '</div>';
+  }
+
+  // ESCENARIOS CON PROBABILIDADES
+  h += '<div style="margin-bottom:14px">';
+  h += '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">📊 ¿Qué podría pasar? — Escenarios y probabilidades</div>';
+  h += '<div style="font-size:11px;color:var(--text-t);margin-bottom:12px">Basado en el análisis técnico actual. Las probabilidades son estimaciones — los mercados siempre tienen incertidumbre.</div>';
+  h += '<div class="scenario-grid">';
+  scn.forEach(function(sc){
+    var probN = sc.probability && sc.probability.includes('Alta') ? 65 : sc.probability && sc.probability.includes('Media-Alta') ? 50 : sc.probability && sc.probability.includes('Media') ? 35 : 20;
+    h += '<div class="scenario-card" style="border-color:' + sc.color + '44">';
+    h += '<div style="font-size:13px;font-weight:600;color:' + sc.color + ';margin-bottom:8px">' + sc.icon + ' ' + esc(sc.label) + '</div>';
+    h += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px"><span style="color:var(--text-t)">Probabilidad estimada</span><span style="color:' + sc.color + ';font-weight:700">' + esc(sc.probability) + '</span></div>';
+    h += '<div style="height:6px;background:var(--bg-hover);border-radius:3px;overflow:hidden"><div style="width:' + probN + '%;height:100%;background:' + sc.color + ';border-radius:3px"></div></div></div>';
+    if (sc.target) {
+      h += '<div style="background:' + sc.color + '18;border-radius:6px;padding:6px 8px;margin-bottom:8px;text-align:center">';
+      h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:2px">Precio objetivo</div>';
+      h += '<div style="font-family:var(--mono);font-size:14px;font-weight:600;color:' + sc.color + '">' + esc(sc.target) + ' <span style="font-size:11px">' + esc(sc.targetPct||'') + '</span></div></div>';
+    }
+    h += '<div style="font-size:11px;color:var(--text-t);margin-bottom:8px;font-style:italic;line-height:1.4">' + esc(sc.condition) + '</div>';
+    h += '<div style="font-size:10px;font-weight:600;color:var(--text-t);margin-bottom:4px">¿Por qué podría ocurrir?</div>';
+    h += '<ul style="list-style:none;padding:0">';
+    (sc.triggers||[]).filter(Boolean).forEach(function(t){ h += '<li style="font-size:11px;color:var(--text-s);padding:2px 0 2px 12px;line-height:1.5">· ' + esc(t) + '</li>'; });
+    h += '</ul></div>';
+  });
+  h += '</div></div>';
+
+  // SEÑALES POR ESTRATEGIA
+  h += '<div style="margin-bottom:12px">';
+  h += '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:10px">📋 Detalle completo de señales técnicas</div>';
+  Object.keys(grouped).forEach(function(cat){
+    var cC = catColors[cat] || '#818a94';
+    var exp = catExplain[cat] || '';
+    h += '<div style="margin-bottom:8px;background:var(--bg-card);border-radius:var(--r);border:1px solid var(--border);overflow:hidden">';
+    h += '<div style="padding:8px 12px;border-bottom:1px solid var(--border);background:' + cC + '0a">';
+    h += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:' + cC + '22;color:' + cC + ';border:1px solid ' + cC + '44;font-weight:600">' + esc(cat) + '</span>';
+    if (exp) h += '<span style="font-size:10px;color:var(--text-t);margin-left:8px">' + esc(exp) + '</span>';
+    h += '</div>';
+    grouped[cat].forEach(function(sg){
+      var cls = sg.bull===true ? 'bull' : sg.bull===false ? 'bear' : 'neutral';
+      h += '<div class="signal-item ' + cls + '" style="border-radius:0;border:none;border-bottom:1px solid var(--border)">';
+      h += '<span class="signal-icon">' + sg.icon + '</span>';
+      h += '<span class="signal-text">' + esc(sg.text) + '</span>';
+      if (sg.weight > 0) h += '<span style="font-size:9px;color:var(--text-t);flex-shrink:0;white-space:nowrap">Peso ×' + sg.weight + '</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // FIBONACCI
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
+  h += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">🌀 Niveles de Fibonacci</div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:8px">Calculados sobre el máximo y mínimo del último año. El precio frecuentemente rebota o frena en estos niveles matemáticos.</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">';
+  [['Ext 161.8%',fib.ext_1618],['Máx año',fib.r_0],['Ret 23.6%',fib.r_236],['Ret 38.2%',fib.r_382],['Ret 50.0%',fib.r_500],['Ret 61.8%',fib.r_618],['Ret 78.6%',fib.r_786],['Mín año',fib.r_1000]].forEach(function(fv){
+    var isNear = fv[1] && Math.abs(fv[1]-cur)/cur < 0.02;
+    var abv = fv[1] > cur;
+    h += '<div style="padding:5px 6px;border-radius:6px;' + (isNear?'background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.4)':'border:1px solid var(--border)') + '">';
+    h += '<div style="font-size:9px;color:var(--text-t)">' + fv[0] + '</div>';
+    h += '<div style="font-family:var(--mono);font-size:11px;color:' + (abv?'var(--red)':'var(--green)') + '">' + fp(fv[1]) + '</div></div>';
+  });
+  h += '</div>';
+  if (s.nearFibLevels && s.nearFibLevels.length) {
+    h += '<div style="font-size:11px;color:var(--amber);margin-top:8px;padding:6px 10px;background:rgba(234,179,8,0.1);border-radius:6px">⚠️ El precio está muy cerca del nivel Fibonacci ' + esc(s.nearFibLevels[0].l) + ' — es una zona técnica importante donde el precio puede rebotar o romper con fuerza.</div>';
+  }
+  h += '</div>';
+
+  // FOOTER
+  var aTime = s.analyzedAt ? new Date(s.analyzedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+  h += '<div style="font-size:10px;color:var(--text-t);text-align:right;border-top:1px solid var(--border);padding-top:8px">Analizado: ' + aTime + ' · ' + (s.barsCount||0) + ' barras diarias · Weinstein · MACD · Bollinger · RSI · OBV · Estocástico · Fibonacci</div>';
+  h += '</div>';
+  h += '<div class="signals-disclaimer" style="font-size:11px;padding:12px">⚠️ <strong>Importante:</strong> Este análisis es educativo e informativo. NO es asesoramiento financiero. Los mercados son impredecibles — podés perder dinero. Nunca inviertas más de lo que podés perder.</div>';
+  return h;
+}
+function ps(n, cur) {
   if (!n || !cur) return '';
-  const p = ((n - cur) / cur * 100);
+  var p = ((n - cur) / cur * 100);
   return (p >= 0 ? '+' : '') + p.toFixed(1) + '%';
 }
 
-function renderSpotCard(s) {
-  const ind = s.indicators || {};
-  const cur = s.currentPrice;
-  const chgColor = s.changePercent >= 0 ? 'var(--green)' : 'var(--red)';
-  const chgSign  = s.changePercent >= 0 ? '+' : '';
-  const vbg = s.totalScore >= 8  ? 'rgba(34,197,94,0.15)'   :
-              s.totalScore >= 5  ? 'rgba(134,239,172,0.12)' :
-              s.totalScore >= 2  ? 'rgba(167,243,208,0.1)'  :
-              s.totalScore >= -1 ? 'rgba(234,179,8,0.12)'   :
-              s.totalScore >= -4 ? 'rgba(252,165,165,0.12)' :
-                                   'rgba(239,68,68,0.15)';
-  const action    = s.action    || {};
-  const targets   = s.targets   || {};
-  const scenarios = s.scenarios || [];
-  const fib       = s.fibonacci || {};
-  const grouped   = {};
-  (s.signals||[]).forEach(function(sig){ if(!grouped[sig.category])grouped[sig.category]=[]; grouped[sig.category].push(sig); });
-  const catColors = {'Weinstein':'#a855f7','Cruce EMAs':'#3b82f6','EMAs':'#3b82f6','MACD':'#f97316','RSI':'#22c55e','Bollinger':'#eab308','OBV':'#14b8a6','Estocástico':'#ec4899','Volumen':'#6366f1','Fibonacci':'#8b5cf6'};
-  const obvIcon  = ind.obvTrend==='rising'?'↑':ind.obvTrend==='falling'?'↓':'→';
-  const obvColor = ind.obvTrend==='rising'?'var(--green)':ind.obvTrend==='falling'?'var(--red)':'var(--text-s)';
-
-  let html = '';
-
-  // ── CARD OPEN ──
-  html += '<div class="signal-card spot-card" style="border-color:' + s.verdictColor + '33">';
-
-  // ── HEADER ──
-  const assetLabel = s.assetType==='crypto'?'Criptomoneda':s.assetType==='cedear'?'CEDEAR':'Acción / ETF';
-  html += '<div class="signal-card-header">';
-  html += '<div class="signal-asset">';
-  html += '<span class="ticker-chip" style="font-size:14px;padding:5px 12px;background:' + s.verdictColor + '22;border-color:' + s.verdictColor + '55;color:' + s.verdictColor + '">' + esc(s.ticker) + '</span>';
-  html += '<div>';
-  html += '<div style="font-size:11px;color:var(--text-t)">' + esc(assetLabel) + ' · ' + esc(s.stage||'') + '</div>';
-  html += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">';
-  html += '<span style="font-family:var(--mono);font-size:16px;font-weight:600">' + fmt6(cur) + '</span>';
-  html += '<span style="font-size:12px;color:' + chgColor + '">' + chgSign + s.changePercent + '%</span>';
-  html += '</div></div></div>';
-  html += '<div style="text-align:right">';
-  html += '<div class="verdict-badge" style="color:' + s.verdictColor + ';border-color:' + s.verdictColor + ';background:' + vbg + ';margin-bottom:6px">' + s.verdictIcon + ' ' + esc(s.verdict) + '</div>';
-  const scoreColor = s.totalScore > 0 ? 'var(--green)' : s.totalScore < 0 ? 'var(--red)' : 'var(--text-s)';
-  html += '<div style="font-size:10px;color:var(--text-t)">Score: <span style="color:' + scoreColor + ';font-weight:500">+' + (s.bullScore||0) + '↑ / ' + (s.bearScore||0) + '↓</span></div>';
-  html += '</div></div>';
-
-  // ── ACCIÓN ──
-  if (action.action) {
-    html += '<div class="action-box" style="background:' + action.actionColor + '15;border-color:' + action.actionColor + '55;margin-bottom:12px">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
-    html += '<div class="action-title" style="color:' + action.actionColor + '">' + action.actionIcon + ' ' + esc(action.action) + '</div>';
-    if (action.warning) html += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(234,179,8,0.2);color:var(--amber);border:1px solid rgba(234,179,8,0.4)">' + esc(action.warning) + '</span>';
-    html += '</div><ul class="action-reasons">';
-    (action.reasons||[]).forEach(function(r){ html += '<li style="color:' + action.actionColor + 'cc">' + esc(r) + '</li>'; });
-    html += '</ul></div>';
-  }
-
-  // ── INDICADORES GRID ──
-  const indItems = [
-    ['RSI 14', ind.rsi!=null?ind.rsi.toFixed(1):'—', ind.rsi<30?'var(--green)':ind.rsi>70?'var(--red)':'var(--text)', ind.rsi<30?'Sobreventa':ind.rsi>70?'Sobrecompra':ind.rsi>50?'Fuerza':'Debilidad'],
-    ['MACD', ind.macdLine!=null?(ind.macdLine>0?'+':'')+ind.macdLine.toFixed(3):'—', ind.macdLine>ind.macdSignal?'var(--green)':'var(--red)', ind.macdLine>ind.macdSignal?'Alcista':'Bajista'],
-    ['Estocástico', ind.stochK!=null?ind.stochK.toFixed(1)+'%':'—', ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text)', ind.stochK<20?'Sobreventa':ind.stochK>80?'Sobrecompra':'Neutral'],
-    ['BB %', ind.bbPct!=null?(ind.bbPct*100).toFixed(0)+'%':'—', ind.bbPct>0.85?'var(--red)':ind.bbPct<0.15?'var(--green)':'var(--text)', ind.bbPct>0.85?'Zona alta':ind.bbPct<0.15?'Zona baja':'Centro'],
-    ['OBV', obvIcon, obvColor, ind.obvTrend==='rising'?'Acumulando':ind.obvTrend==='falling'?'Distribuyendo':'Lateral'],
-  ];
-  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px">';
-  indItems.forEach(function(it){
-    html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:9px 8px;text-align:center">';
-    html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">' + it[0] + '</div>';
-    html += '<div style="font-family:var(--mono);font-size:14px;font-weight:500;color:' + it[2] + '">' + it[1] + '</div>';
-    html += '<div style="font-size:9px;color:var(--text-t);margin-top:2px">' + it[3] + '</div>';
-    html += '</div>';
-  });
-  html += '</div>';
-
-  // ── EMAs ──
-  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:10px">Medias móviles</div>';
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
-  [['MA 30',ind.ma30,'Weinstein'],['EMA 20',ind.ema20,'Corto'],['EMA 50',ind.ema50,'Mediano'],['EMA 200',ind.ema200,'Largo']].forEach(function(em){
-    const abv = em[1] && cur > em[1];
-    const col = em[1] ? (abv ? 'var(--green)' : 'var(--red)') : 'var(--text-t)';
-    html += '<div style="text-align:center"><div style="font-size:10px;color:var(--text-t);margin-bottom:3px">' + em[0] + '</div>';
-    html += '<div style="font-family:var(--mono);font-size:12px;color:' + col + '">' + fmt6(em[1]) + '</div>';
-    html += '<div style="font-size:9px;margin-top:2px;color:' + col + '">' + (em[1]?(abv?'↑ arriba':'↓ abajo'):'—') + ' ' + em[2] + '</div></div>';
-  });
-  html += '</div>';
-  if (s.crossovers && s.crossovers.goldenCross) {
-    html += '<div style="margin-top:10px;padding:6px 10px;border-radius:6px;font-size:11px;background:rgba(34,197,94,0.12);color:var(--green)">✨ Golden Cross activo — EMA50 cruzó hacia arriba la EMA200</div>';
-  } else if (s.crossovers && s.crossovers.deathCross) {
-    html += '<div style="margin-top:10px;padding:6px 10px;border-radius:6px;font-size:11px;background:rgba(239,68,68,0.12);color:var(--red)">💀 Death Cross activo — EMA50 cruzó hacia abajo la EMA200</div>';
-  }
-  html += '</div>';
-
-  // ── BOLLINGER ──
-  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">Bandas de Bollinger (20,2)</div>';
-  const pct = ind.bbPct != null ? Math.min(Math.max(ind.bbPct*100,2),98) : 50;
-  html += '<div style="position:relative;height:24px;background:linear-gradient(to right,var(--bg-hover),rgba(59,130,246,0.15),var(--bg-hover));border-radius:4px;margin-bottom:6px">';
-  if (ind.bbPct != null) html += '<div style="position:absolute;top:50%;transform:translate(-50%,-50%);left:' + pct + '%;width:8px;height:8px;border-radius:50%;background:' + s.verdictColor + ';box-shadow:0 0 6px ' + s.verdictColor + '"></div>';
-  html += '</div>';
-  html += '<div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)">';
-  html += '<span style="color:var(--green)">↓ ' + fmt6(ind.bbLower) + '</span>';
-  html += '<span style="color:var(--text-s)">Med ' + fmt6(ind.bbMid) + '</span>';
-  html += '<span style="color:var(--red)">↑ ' + fmt6(ind.bbUpper) + '</span>';
-  html += '</div>';
-  if (ind.bbWidth < 0.05) html += '<div style="margin-top:6px;font-size:11px;color:var(--amber)">⚡ Bollinger Squeeze — bandas comprimidas, se acerca movimiento explosivo</div>';
-  html += '</div>';
-
-  // ── TARGETS + S/R ──
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
-  // Targets
-  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">🎯 Targets / Stop Loss</div>';
-  (targets.upside||[]).slice(0,3).forEach(function(t){
-    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)">';
-    html += '<span style="color:var(--green)">▲ ' + esc(t.label) + (t.touches?' ('+t.touches+'t)':'') + '</span>';
-    html += '<span style="font-family:var(--mono)">' + fmt6(t.price) + ' <span style="font-size:10px;color:var(--text-t)">' + pctStr(t.price,cur) + '</span></span>';
-    html += '</div>';
-  });
-  if (targets.stopLoss) {
-    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;margin-top:4px;border-top:2px solid rgba(239,68,68,0.3)">';
-    html += '<span style="color:var(--red)">🛑 Stop Loss (1.5×ATR)</span>';
-    html += '<span style="font-family:var(--mono);color:var(--red)">' + fmt6(targets.stopLoss.price) + ' <span style="font-size:10px">' + (targets.stopLoss.distPct||'') + '%</span></span>';
-    html += '</div>';
-  }
-  if (targets.riskReward != null) {
-    const rrColor = targets.riskReward >= 2 ? 'var(--green)' : targets.riskReward >= 1 ? 'var(--amber)' : 'var(--red)';
-    html += '<div style="font-size:11px;color:var(--text-t);margin-top:6px;text-align:right">R:R = <span style="color:' + rrColor + '">1:' + targets.riskReward + '</span></div>';
-  }
-  html += '</div>';
-  // S/R
-  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">📍 Soporte / Resistencia</div>';
-  (targets.upside||[]).slice(0,2).forEach(function(t){
-    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--red)">R ' + fmt6(t.price) + '</span><span style="font-size:10px;color:var(--text-t)">' + pctStr(t.price,cur) + '</span></div>';
-  });
-  html += '<div style="border-top:1px dashed var(--border);margin:6px 0;font-size:10px;color:var(--text-t);text-align:center">Precio: ' + fmt6(cur) + '</div>';
-  (targets.downside||[]).slice(0,2).forEach(function(t){
-    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--green)">S ' + fmt6(t.price) + '</span><span style="font-size:10px;color:var(--text-t)">' + pctStr(t.price,cur) + '</span></div>';
-  });
-  html += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">';
-  html += '<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text-t)">Máx 52s</span><span style="font-family:var(--mono);color:var(--red)">' + fmt6(s.high52w) + '</span></div>';
-  html += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px"><span style="color:var(--text-t)">Mín 52s</span><span style="font-family:var(--mono);color:var(--green)">' + fmt6(s.low52w) + '</span></div>';
-  html += '</div></div></div>';
-
-  // ── FIBONACCI ──
-  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">🌀 Fibonacci Retracements (52 semanas)</div>';
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">';
-  [['Ext 161.8%',fib.ext_1618],['Máx 100%',fib.r_0],['Ret 23.6%',fib.r_236],['Ret 38.2%',fib.r_382],['Ret 50.0%',fib.r_500],['Ret 61.8%',fib.r_618],['Ret 78.6%',fib.r_786],['Mín 100%',fib.r_1000]].forEach(function(fv){
-    const isNear = fv[1] && Math.abs(fv[1]-cur)/cur < 0.02;
-    const abv = fv[1] > cur;
-    const border = isNear ? 'background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.4)' : 'border:1px solid var(--border)';
-    html += '<div style="padding:5px 6px;border-radius:6px;' + border + '">';
-    html += '<div style="font-size:9px;color:var(--text-t)">' + fv[0] + '</div>';
-    html += '<div style="font-family:var(--mono);font-size:11px;color:' + (abv?'var(--red)':'var(--green)') + '">' + fmt6(fv[1]) + '</div>';
-    html += '</div>';
-  });
-  html += '</div>';
-  if (s.nearFibLevels && s.nearFibLevels.length) {
-    html += '<div style="font-size:11px;color:var(--amber);margin-top:8px">⚠️ Precio cerca del nivel ' + esc(s.nearFibLevels[0].l) + ' — zona de confluencia técnica</div>';
-  }
-  html += '</div>';
-
-  // ── DIVERGENCIAS ──
-  if (s.divergences && (s.divergences.bullDiv || s.divergences.bearDiv)) {
-    const divBull = s.divergences.bullDiv;
-    const divColor = divBull ? 'var(--green)' : 'var(--red)';
-    const divBg = divBull ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)';
-    const divBorder = divBull ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)';
-    html += '<div style="padding:10px 12px;border-radius:var(--r);margin-bottom:12px;background:' + divBg + ';border:1px solid ' + divBorder + '">';
-    html += '<span style="font-size:12px;font-weight:500;color:' + divColor + '">🔄 Divergencia ' + (divBull?'alcista':'bajista') + ' RSI detectada</span>';
-    html += '<span style="font-size:11px;color:var(--text-s);margin-left:8px">' + (divBull?'Precio hace mínimo más bajo pero RSI no confirma — agotamiento vendedor':'Precio hace máximo más alto pero RSI no confirma — agotamiento comprador') + '</span>';
-    html += '</div>';
-  }
-
-  // ── ESCENARIOS ──
-  html += '<div style="margin-bottom:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">🎯 Escenarios posibles</div>';
-  html += '<div class="scenario-grid">';
-  scenarios.forEach(function(sc){
-    html += '<div class="scenario-card" style="border-color:' + sc.color + '33">';
-    html += '<div class="scenario-label" style="color:' + sc.color + '">' + sc.icon + ' ' + esc(sc.label) + '</div>';
-    html += '<div class="scenario-condition">' + esc(sc.condition) + '</div>';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-    html += '<span class="scenario-prob" style="background:' + sc.color + '22;color:' + sc.color + '">' + esc(sc.probability) + '</span>';
-    if (sc.target) html += '<span style="font-family:var(--mono);font-size:12px;color:' + sc.color + '">' + esc(sc.target) + ' <span style="font-size:10px;color:var(--text-t)">' + esc(sc.targetPct||'') + '</span></span>';
-    html += '</div><ul class="scenario-explain" style="list-style:none">';
-    (sc.triggers||[]).filter(Boolean).forEach(function(t){ html += '<li>' + esc(t) + '</li>'; });
-    html += '</ul></div>';
-  });
-  html += '</div></div>';
-
-  // ── SEÑALES POR ESTRATEGIA ──
-  html += '<div style="margin-bottom:12px">';
-  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">📋 Señales por estrategia</div>';
-  html += '<div style="display:flex;flex-direction:column;gap:6px">';
-  Object.keys(grouped).forEach(function(cat){
-    const catColor = catColors[cat] || '#818a94';
-    grouped[cat].forEach(function(sig){
-      const cls = sig.bull===true?'bull':sig.bull===false?'bear':'neutral';
-      html += '<div class="signal-item ' + cls + '">';
-      html += '<span style="font-size:9px;padding:1px 6px;border-radius:99px;background:' + catColor + '22;color:' + catColor + ';border:1px solid ' + catColor + '44;flex-shrink:0;margin-right:2px;white-space:nowrap">' + esc(cat) + '</span>';
-      html += '<span class="signal-icon">' + sig.icon + '</span>';
-      html += '<span class="signal-text">' + esc(sig.text) + '</span>';
-      if (sig.weight > 0) html += '<span style="font-size:9px;color:var(--text-t);flex-shrink:0;margin-left:4px">×' + sig.weight + '</span>';
-      html += '</div>';
-    });
-  });
-  html += '</div></div>';
-
-  // ── FOOTER ──
-  const analyzedTime = s.analyzedAt ? new Date(s.analyzedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
-  html += '<div style="font-size:10px;color:var(--text-t);text-align:right;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">';
-  html += 'Analizado: ' + analyzedTime + ' · ' + (s.barsCount||0) + ' barras · Weinstein · MACD (Appel) · Bollinger · RSI (Wilder) · OBV (Granville) · Estocástico · Fibonacci';
-  html += '</div>';
-
-  html += '</div>';
-  html += '<div class="signals-disclaimer">⚠️ Análisis técnico informativo — NO es asesoramiento financiero. Los indicadores son herramientas de probabilidad, no de certeza.</div>';
-
-  return html;
-}
 
 // -- NEWS --
 let allNews = [];
@@ -1002,7 +1054,6 @@ function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
   const v=t.getAttribute('data-view');
   showView(v);
-  if(v==='signals'&&db.operations.length)loadSignals();
   if(v==='news'&&document.getElementById('news-list').textContent.includes('click'))loadNews();
 }));
 
