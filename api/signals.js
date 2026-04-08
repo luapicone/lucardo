@@ -1,9 +1,12 @@
 /**
- * api/signals.js
- * SCALP (Futuros 5m): ICT/SMC — Liquidity Sweep + Order Block + EMA 9/21 + VWAP + ATR
- *   Fuente: Bybit Futures → Binance Spot fallback → KuCoin (todos públicos, sin key)
- * SPOT: Weinstein Stage + EMA 20/50/200 + RSI + Fibonacci + Proyección precio
- *   Fuente: CoinGecko (cripto) + Yahoo Finance (acciones/ETFs)
+ * api/signals.js — v3
+ *
+ * SCALP (5m): ICT/Smart Money — Sweep + OB + FVG + EMA 9/21 + VWAP + ATR
+ *   Fuente: Bybit → Binance → KuCoin
+ *
+ * SPOT: Weinstein Stage + EMA + RSI + Fibonacci + Proyección realista
+ *   Proyección: combina regresión lineal + ATR volatility bands + niveles Fibonacci
+ *   (evita el problema de extrapolar tendencias extremas)
  */
 
 module.exports = async function handler(req, res) {
@@ -17,607 +20,540 @@ module.exports = async function handler(req, res) {
   if (!ticker) return res.status(400).json({ error: 'Ticker requerido' });
 
   try {
-    if (mode === 'scalp') {
-      return res.status(200).json(await analyzeScalp(ticker.toUpperCase()));
-    } else {
-      return res.status(200).json(await analyzeSpot(ticker.toUpperCase()));
-    }
+    if (mode === 'scalp') return res.status(200).json(await analyzeScalp(ticker.toUpperCase()));
+    return res.status(200).json(await analyzeSpot(ticker.toUpperCase()));
   } catch (err) {
     console.error('Signals error:', err);
     return res.status(500).json({ error: String(err), ticker });
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DATA SOURCES — múltiples fuentes con fallback
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// DATA SOURCES
+// ═══════════════════════════════════════════════════════════
 
 async function fetchKlines(sym, interval, limit) {
   const pair = sym.endsWith('USDT') ? sym : `${sym}USDT`;
 
-  // 1. Bybit Futures (no restringe IPs de cloud)
+  // 1. Bybit (no restringe cloud IPs)
   try {
-    const bybitInterval = { '5m': '5', '15m': '15', '1h': '60', '1d': 'D' }[interval] || '5';
-    const r = await fetch(
-      `https://api.bybit.com/v5/market/kline?category=linear&symbol=${pair}&interval=${bybitInterval}&limit=${limit}`
-    );
+    const bi = { '5m':'5','15m':'15','1h':'60','4h':'240','1d':'D' }[interval]||'5';
+    const r = await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${pair}&interval=${bi}&limit=${limit}`);
     if (r.ok) {
       const d = await r.json();
       const list = d?.result?.list;
-      if (list && list.length > 10) {
-        // Bybit devuelve orden inverso (más reciente primero)
-        return list.reverse().map(k => ({
-          time: Number(k[0]), open: parseFloat(k[1]), high: parseFloat(k[2]),
-          low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]),
+      if (list?.length > 10) {
+        return list.reverse().map(k=>({
+          time:Number(k[0]),open:parseFloat(k[1]),high:parseFloat(k[2]),
+          low:parseFloat(k[3]),close:parseFloat(k[4]),volume:parseFloat(k[5]),
         }));
       }
     }
   } catch {}
 
-  // 2. Binance Spot (más permisivo que Futures para IPs cloud)
+  // 2. Binance Spot
   try {
-    const binInterval = interval; // 5m, 15m, etc.
-    const r = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${binInterval}&limit=${limit}`
-    );
+    const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`);
     if (r.ok) {
       const d = await r.json();
-      if (Array.isArray(d) && d.length > 10) {
-        return d.map(k => ({
-          time: k[0], open: parseFloat(k[1]), high: parseFloat(k[2]),
-          low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]),
-        }));
-      }
+      if (Array.isArray(d) && d.length > 10)
+        return d.map(k=>({time:k[0],open:parseFloat(k[1]),high:parseFloat(k[2]),low:parseFloat(k[3]),close:parseFloat(k[4]),volume:parseFloat(k[5])}));
     }
   } catch {}
 
-  // 3. KuCoin como último fallback
+  // 3. KuCoin
   try {
-    const kuInterval = { '5m': '5min', '15m': '15min', '1h': '1hour', '1d': '1day' }[interval] || '5min';
-    const endAt = Math.floor(Date.now() / 1000);
-    const startAt = endAt - limit * 300;
-    const r = await fetch(
-      `https://api.kucoin.com/api/v1/market/candles?type=${kuInterval}&symbol=${sym}-USDT&startAt=${startAt}&endAt=${endAt}`
-    );
+    const ki = {'5m':'5min','15m':'15min','1h':'1hour','1d':'1day'}[interval]||'5min';
+    const end = Math.floor(Date.now()/1000);
+    const start = end - limit*300;
+    const r = await fetch(`https://api.kucoin.com/api/v1/market/candles?type=${ki}&symbol=${sym}-USDT&startAt=${start}&endAt=${end}`);
     if (r.ok) {
       const d = await r.json();
-      const data = d?.data;
-      if (data && data.length > 10) {
-        return data.reverse().map(k => ({
-          time: Number(k[0]) * 1000, open: parseFloat(k[1]), close: parseFloat(k[2]),
-          high: parseFloat(k[3]), low: parseFloat(k[4]), volume: parseFloat(k[5]),
-        }));
-      }
+      if (d?.data?.length>10)
+        return d.data.reverse().map(k=>({time:Number(k[0])*1000,open:parseFloat(k[1]),close:parseFloat(k[2]),high:parseFloat(k[3]),low:parseFloat(k[4]),volume:parseFloat(k[5])}));
     }
   } catch {}
 
   return null;
 }
 
-async function fetchCGHistory(id, days = 365) {
+const CGIDS={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',ADA:'cardano',DOT:'polkadot',AVAX:'avalanche-2',MATIC:'matic-network',POL:'matic-network',LINK:'chainlink',XRP:'ripple',LTC:'litecoin',BNB:'binancecoin',DOGE:'dogecoin',SHIB:'shiba-inu',UNI:'uniswap',ATOM:'cosmos',NEAR:'near',OP:'optimism',ARB:'arbitrum',WIF:'dogwifcoin',PEPE:'pepe',TON:'the-open-network',SUI:'sui',APT:'aptos',INJ:'injective-protocol',TIA:'celestia',SEI:'sei-network',THETA:'theta-token',TFUEL:'theta-fuel',SAND:'the-sandbox',MANA:'decentraland',AXS:'axie-infinity',FIL:'filecoin',ICP:'internet-computer',VET:'vechain',HBAR:'hedera-hashgraph',ALGO:'algorand',XLM:'stellar',ETC:'ethereum-classic',BCH:'bitcoin-cash',AAVE:'aave',MKR:'maker',LDO:'lido-dao',RUNE:'thorchain',FTM:'fantom',GRT:'the-graph',FLOW:'flow',KAVA:'kava',ZEC:'zcash',DASH:'dash',XMR:'monero',XTZ:'tezos',SNX:'synthetix-network-token',CRV:'curve-dao-token',SUSHI:'sushi',YFI:'yearn-finance',COMP:'compound-governance-token',BAT:'basic-attention-token',ONE:'harmony',ENJ:'enjincoin',CHZ:'chiliz',OCEAN:'ocean-protocol',ANKR:'ankr',RENDER:'render-token',FET:'fetch-ai',WLD:'worldcoin-wld',PYTH:'pyth-network',STX:'blockstack'};
+const CRYPTO_SET=new Set(Object.keys(CGIDS));
+
+async function fetchCGHistory(id) {
   try {
-    const r = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}&interval=daily`
-    );
+    const r = await fetch(`https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=365&interval=daily`);
     if (!r.ok) return null;
     const d = await r.json();
-    const prices = d.prices || [], vols = d.total_volumes || [];
-    return prices.map((p, i) => ({
-      date: new Date(p[0]).toISOString().split('T')[0],
-      close: p[1], high: p[1], low: p[1], volume: vols[i]?.[1] || 0,
-    }));
+    const prices=d.prices||[], vols=d.total_volumes||[];
+    return prices.map((p,i)=>({date:new Date(p[0]).toISOString().split('T')[0],close:p[1],high:p[1]*1.005,low:p[1]*0.995,volume:vols[i]?.[1]||0}));
   } catch { return null; }
 }
 
 async function fetchYahooHistory(sym) {
-  for (const base of ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com']) {
+  for (const base of ['https://query1.finance.yahoo.com','https://query2.finance.yahoo.com']) {
     try {
       const r = await fetch(`${base}/v8/finance/chart/${sym}?interval=1d&range=1y`);
       if (!r.ok) continue;
       const d = await r.json();
-      const result = d?.chart?.result?.[0];
-      if (!result) continue;
-      const ts = result.timestamp || [], q = result.indicators?.quote?.[0] || {};
-      return ts.map((t, i) => ({
-        date: new Date(t * 1000).toISOString().split('T')[0],
-        close: q.close?.[i], high: q.high?.[i] || q.close?.[i],
-        low: q.low?.[i] || q.close?.[i], volume: q.volume?.[i] || 0,
-      })).filter(b => b.close != null);
+      const res=d?.chart?.result?.[0];
+      if (!res) continue;
+      const ts=res.timestamp||[], q=res.indicators?.quote?.[0]||{};
+      return ts.map((t,i)=>({date:new Date(t*1000).toISOString().split('T')[0],close:q.close?.[i],high:q.high?.[i]||q.close?.[i],low:q.low?.[i]||q.close?.[i],volume:q.volume?.[i]||0})).filter(b=>b.close!=null);
     } catch { continue; }
   }
   return null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 // INDICADORES
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
-function ema(data, period) {
-  const k = 2 / (period + 1);
-  const result = [];
-  let prev = null;
-  for (let i = 0; i < data.length; i++) {
-    if (prev === null) {
-      if (i < period - 1) { result.push(null); continue; }
-      prev = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
-      result.push(prev); continue;
-    }
-    prev = data[i] * k + prev * (1 - k);
-    result.push(prev);
+function ema(data, p) {
+  const k=2/(p+1); const result=[]; let prev=null;
+  for (let i=0;i<data.length;i++) {
+    if (prev===null) { if(i<p-1){result.push(null);continue;} prev=data.slice(0,p).reduce((a,b)=>a+b,0)/p; result.push(prev); continue; }
+    prev=data[i]*k+prev*(1-k); result.push(prev);
   }
   return result;
 }
 
-function rsi(closes, period = 14) {
-  const result = new Array(period).fill(null);
-  let ag = 0, al = 0;
-  for (let i = 1; i <= period; i++) {
-    const d = closes[i] - closes[i - 1];
-    if (d > 0) ag += d; else al += Math.abs(d);
-  }
-  ag /= period; al /= period;
-  for (let i = period; i < closes.length; i++) {
-    if (i > period) {
-      const d = closes[i] - closes[i - 1];
-      ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
-      al = (al * (period - 1) + (d < 0 ? Math.abs(d) : 0)) / period;
-    }
-    result.push(al === 0 ? 100 : 100 - 100 / (1 + ag / al));
+function rsi(closes, p=14) {
+  const result=new Array(p).fill(null); let ag=0,al=0;
+  for(let i=1;i<=p;i++){const d=closes[i]-closes[i-1];if(d>0)ag+=d;else al+=Math.abs(d);}
+  ag/=p; al/=p;
+  for(let i=p;i<closes.length;i++){
+    if(i>p){const d=closes[i]-closes[i-1];ag=(ag*(p-1)+(d>0?d:0))/p;al=(al*(p-1)+(d<0?Math.abs(d):0))/p;}
+    result.push(al===0?100:100-100/(1+ag/al));
   }
   return result;
 }
 
-function atr(highs, lows, closes, period = 14) {
-  const trs = highs.map((h, i) => {
-    if (i === 0) return h - lows[i];
-    return Math.max(h - lows[i], Math.abs(h - closes[i-1]), Math.abs(lows[i] - closes[i-1]));
-  });
-  return sma(trs, period);
+function atr(highs, lows, closes, p=14) {
+  const trs=highs.map((h,i)=>i===0?h-lows[i]:Math.max(h-lows[i],Math.abs(h-closes[i-1]),Math.abs(lows[i]-closes[i-1])));
+  return sma(trs, p);
 }
 
-function sma(data, period) {
-  return data.map((_, i) => {
-    if (i < period - 1) return null;
-    const sl = data.slice(i - period + 1, i + 1).filter(v => v != null);
-    return sl.length === period ? sl.reduce((a, b) => a + b, 0) / period : null;
+function sma(data, p) {
+  return data.map((_,i)=>{
+    if(i<p-1)return null;
+    const sl=data.slice(i-p+1,i+1).filter(v=>v!=null);
+    return sl.length===p?sl.reduce((a,b)=>a+b,0)/p:null;
   });
 }
 
 function calcVWAP(bars) {
-  let cumTPV = 0, cumVol = 0;
-  for (const b of bars) {
-    const tp = (b.high + b.low + b.close) / 3;
-    cumTPV += tp * b.volume; cumVol += b.volume;
-  }
-  return cumVol > 0 ? cumTPV / cumVol : bars[bars.length - 1].close;
+  let cumTPV=0,cumVol=0;
+  for(const b of bars){const tp=(b.high+b.low+b.close)/3;cumTPV+=tp*b.volume;cumVol+=b.volume;}
+  return cumVol>0?cumTPV/cumVol:bars[bars.length-1].close;
 }
 
-// Fibonacci retracements desde swing high/low
-function fibonacci(high, low) {
-  const diff = high - low;
-  return {
-    ext_1618: high + diff * 0.618,
-    ext_1000: high,
-    r_000:    high,
-    r_236:    high - diff * 0.236,
-    r_382:    high - diff * 0.382,
-    r_500:    high - diff * 0.5,
-    r_618:    high - diff * 0.618,
-    r_786:    high - diff * 0.786,
-    r_1000:   low,
-    ext_neg:  low - diff * 0.272,
+// Regresión lineal — devuelve slope, r-cuadrado (calidad del fit) y proyecciones
+function linearReg(data) {
+  const n=data.length;
+  const xm=(n-1)/2, ym=data.reduce((a,b)=>a+b,0)/n;
+  let num=0,den=0,ssRes=0,ssTot=0;
+  for(let i=0;i<n;i++){num+=(i-xm)*(data[i]-ym);den+=(i-xm)**2;}
+  const slope=den!==0?num/den:0;
+  const intercept=ym-slope*xm;
+  for(let i=0;i<n;i++){const pred=intercept+slope*i;ssRes+=(data[i]-pred)**2;ssTot+=(data[i]-ym)**2;}
+  const r2=ssTot>0?Math.max(0,1-ssRes/ssTot):0;
+  return {slope,intercept,r2,
+    project:(periods)=>periods.map(p=>({period:p,price:intercept+slope*(n-1+p)}))
   };
 }
 
-// Proyección lineal de tendencia (regresión lineal simple)
-function linearRegression(closes, periods) {
+// Proyección realista: combina regresión + mean reversion + bandas de volatilidad
+function realisticProjection(closes, horizons) {
   const n = closes.length;
-  const xMean = (n - 1) / 2;
-  const yMean = closes.reduce((a, b) => a + b, 0) / n;
-  let num = 0, den = 0;
-  for (let i = 0; i < n; i++) {
-    num += (i - xMean) * (closes[i] - yMean);
-    den += (i - xMean) ** 2;
-  }
-  const slope = den !== 0 ? num / den : 0;
-  const intercept = yMean - slope * xMean;
+  const cur = closes[n-1];
+
+  // Volatilidad histórica (desv estándar de retornos diarios)
+  const returns = closes.slice(1).map((c,i)=>Math.log(c/closes[i]));
+  const meanRet = returns.reduce((a,b)=>a+b,0)/returns.length;
+  const variance = returns.map(r=>(r-meanRet)**2).reduce((a,b)=>a+b,0)/returns.length;
+  const dailyVol = Math.sqrt(variance); // vol diaria en log-returns
+
+  // Regresión sobre los últimos 90 días para tendencia
+  const reg = linearReg(closes.slice(-Math.min(90,n)));
+  // Cap slope: si r2 < 0.3 (tendencia débil), reducir slope al 30%
+  const confidenceMult = reg.r2 < 0.3 ? 0.3 : reg.r2 < 0.6 ? 0.6 : 1.0;
+  const effectiveSlope = reg.slope * confidenceMult;
+
+  return horizons.map(days=>{
+    // Precio esperado por tendencia (ajustado por confianza)
+    const trendPrice = cur + effectiveSlope * days;
+    // Bandas de volatilidad (1.5 sigma para el 87% de los casos)
+    const totalVol = dailyVol * Math.sqrt(days) * cur;
+    const upper = trendPrice + totalVol * 1.5;
+    const lower = trendPrice - totalVol * 1.5;
+    return {
+      period: days,
+      price: Math.max(trendPrice, cur * 0.01), // no puede ser negativo
+      upper: Math.max(upper, cur * 0.01),
+      lower: Math.max(lower, cur * 0.01),
+      confidence: reg.r2,
+      dailyVolPct: dailyVol * 100,
+    };
+  });
+}
+
+function fibonacci(high, low) {
+  const d=high-low;
   return {
-    slope,
-    currentFit: intercept + slope * (n - 1),
-    projections: periods.map(p => ({
-      period: p,
-      price: intercept + slope * (n - 1 + p),
-    })),
+    ext_1618:+(high+d*0.618).toFixed(6),
+    r_000:   +high.toFixed(6),
+    r_236:   +(high-d*0.236).toFixed(6),
+    r_382:   +(high-d*0.382).toFixed(6),
+    r_500:   +(high-d*0.5).toFixed(6),
+    r_618:   +(high-d*0.618).toFixed(6),
+    r_786:   +(high-d*0.786).toFixed(6),
+    r_1000:  +low.toFixed(6),
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+function findLevels(prices, n, lookback=60, type='support') {
+  const slice = prices.slice(Math.max(0,n-lookback),n);
+  const sorted = [...slice].sort((a,b)=>type==='support'?a-b:b-a);
+  const result=[];
+  let group=[sorted[0]];
+  for(let i=1;i<sorted.length;i++){
+    if(Math.abs(sorted[i]-group[group.length-1])/group[group.length-1]<0.01){group.push(sorted[i]);}
+    else{result.push({price:group.reduce((a,b)=>a+b,0)/group.length,touches:group.length});group=[sorted[i]];}
+  }
+  if(group.length)result.push({price:group.reduce((a,b)=>a+b,0)/group.length,touches:group.length});
+  return result.sort((a,b)=>b.touches-a.touches).slice(0,5);
+}
+
+// ═══════════════════════════════════════════════════════════
 // SCALPING — ICT/Smart Money Concepts
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
 async function analyzeScalp(sym) {
   const [bars5m, bars15m] = await Promise.all([
-    fetchKlines(sym, '5m', 120),
-    fetchKlines(sym, '15m', 60),
+    fetchKlines(sym, '5m', 150),
+    fetchKlines(sym, '15m', 80),
   ]);
 
-  if (!bars5m || bars5m.length < 50) {
-    return {
-      error: `No se encontraron datos para ${sym}. Asegurate de escribir solo el símbolo base (BTC, ETH, SOL, BNB, XRP, DOGE, AVAX, LINK, DOT, MATIC, etc.)`,
-      ticker: sym
-    };
+  if (!bars5m||bars5m.length<50) {
+    return {error:`No se encontraron datos para ${sym}. Escribí solo el símbolo base sin USDT (BTC, ETH, SOL, BNB, XRP, DOGE, AVAX, LINK, DOT, ADA, etc.)`,ticker:sym};
   }
 
-  const closes5  = bars5m.map(b => b.close);
-  const highs5   = bars5m.map(b => b.high);
-  const lows5    = bars5m.map(b => b.low);
-  const volumes5 = bars5m.map(b => b.volume);
-  const n = closes5.length;
-  const cur = closes5[n - 1];
+  const closes5=bars5m.map(b=>b.close);
+  const highs5=bars5m.map(b=>b.high);
+  const lows5=bars5m.map(b=>b.low);
+  const n=closes5.length;
+  const cur=closes5[n-1];
 
-  const ema9   = ema(closes5, 9);
-  const ema21  = ema(closes5, 21);
-  const atr14  = atr(highs5, lows5, closes5, 14);
-  const rsi14  = rsi(closes5, 14);
-  const vwap   = calcVWAP(bars5m.slice(-50));
+  const ema9arr=ema(closes5,9);
+  const ema21arr=ema(closes5,21);
+  const atr14arr=atr(highs5,lows5,closes5,14);
+  const rsi14arr=rsi(closes5,14);
+  // VWAP solo sobre las últimas 60 velas (1 sesión de 5h aprox)
+  const vwap=calcVWAP(bars5m.slice(-60));
 
-  const e9 = ema9[n-1], e21 = ema21[n-1];
-  const atrCur = atr14[n-1] || (cur * 0.005);
-  const rsiCur = rsi14[n-1], rsiPrev = rsi14[n-2];
+  const e9=ema9arr[n-1], e21=ema21arr[n-1];
+  const atrCur=atr14arr[n-1]||(cur*0.003);
+  const rsiCur=rsi14arr[n-1], rsiPrev=rsi14arr[n-2];
+  const rsi3ago=rsi14arr[n-4]; // para divergencias
 
-  // Swing highs/lows recientes (últimas 30 velas)
-  const lookback = Math.min(30, n - 2);
-  const recentHigh = Math.max(...highs5.slice(n - lookback - 1, n - 1));
-  const recentLow  = Math.min(...lows5.slice(n - lookback - 1, n - 1));
+  // Swing high/low — busca pivot points reales
+  const pivotLB=20;
+  let swingHigh=Math.max(...highs5.slice(n-pivotLB,n-1));
+  let swingLow=Math.min(...lows5.slice(n-pivotLB,n-1));
 
-  const lastBar  = bars5m[n - 1];
-  const prevBar  = bars5m[n - 2];
+  // Liquidity Sweep — necesita la vela completa para confirmarse
+  const lastBar=bars5m[n-1], prevBar=bars5m[n-2], prev2Bar=bars5m[n-3];
+  const bodySize=Math.abs(lastBar.close-lastBar.open);
+  const totalRange=lastBar.high-lastBar.low;
+  const isBullEngulf=lastBar.close>lastBar.open&&lastBar.close>prevBar.open&&lastBar.open<prevBar.close;
+  const isBearEngulf=lastBar.close<lastBar.open&&lastBar.close<prevBar.open&&lastBar.open>prevBar.close;
 
-  // Liquidity Sweep
-  const bullSweep = lastBar.low < recentLow && lastBar.close > recentLow && lastBar.close > lastBar.open;
-  const bearSweep = lastBar.high > recentHigh && lastBar.close < recentHigh && lastBar.close < lastBar.open;
+  // Sweep: wick que rompe el swing y cuerpo que cierra dentro
+  const bullSweep=lastBar.low<swingLow&&lastBar.close>swingLow&&lastBar.close>lastBar.open&&bodySize>totalRange*0.4;
+  const bearSweep=lastBar.high>swingHigh&&lastBar.close<swingHigh&&lastBar.close<lastBar.open&&bodySize>totalRange*0.4;
 
-  // Order Blocks
-  let bullOB = null, bearOB = null;
-  for (let i = n - 3; i > Math.max(n - 25, 0); i--) {
-    const b = bars5m[i], next3Avg = (closes5[i+1] + closes5[Math.min(i+2,n-1)] + closes5[Math.min(i+3,n-1)]) / 3;
-    if (!bullOB && b.close < b.open && next3Avg > b.open * 1.002) {
-      bullOB = { high: b.open, low: b.close, mid: (b.open + b.close) / 2 };
+  // Order Block — vela impulsiva previa de signo contrario
+  let bullOB=null, bearOB=null;
+  for(let i=n-3;i>Math.max(n-30,1);i--){
+    const b=bars5m[i];
+    // La siguiente vela debe ser impulso en dirección contraria
+    const nextClose=closes5[Math.min(i+2,n-1)];
+    const prevClose=closes5[i-1];
+    if(!bullOB && b.close<b.open) {
+      const impulse=(nextClose-b.close)/atrCur;
+      if(impulse>1.5) bullOB={high:b.open,low:b.close,mid:(b.open+b.close)/2,impulse:+impulse.toFixed(1)};
     }
-    if (!bearOB && b.close > b.open && next3Avg < b.open * 0.998) {
-      bearOB = { high: b.close, low: b.open, mid: (b.open + b.close) / 2 };
+    if(!bearOB && b.close>b.open) {
+      const impulse=(b.close-nextClose)/atrCur;
+      if(impulse>1.5) bearOB={high:b.close,low:b.open,mid:(b.open+b.close)/2,impulse:+impulse.toFixed(1)};
     }
-    if (bullOB && bearOB) break;
+    if(bullOB&&bearOB)break;
   }
 
-  // Fair Value Gap (FVG) — gap entre vela i-1 y vela i+1
-  let bullFVG = null, bearFVG = null;
-  for (let i = n - 3; i > Math.max(n - 15, 1); i--) {
-    if (!bullFVG && lows5[i+1] > highs5[i-1]) {
-      bullFVG = { low: highs5[i-1], high: lows5[i+1] };
-    }
-    if (!bearFVG && highs5[i+1] < lows5[i-1]) {
-      bearFVG = { high: lows5[i-1], low: highs5[i+1] };
-    }
-    if (bullFVG && bearFVG) break;
+  // Fair Value Gap
+  let bullFVG=null, bearFVG=null;
+  for(let i=1;i<n-1;i++){
+    if(!bullFVG&&lows5[i+1]>highs5[i-1]){bullFVG={low:highs5[i-1],high:lows5[i+1]};}
+    if(!bearFVG&&highs5[i+1]<lows5[i-1]){bearFVG={high:lows5[i-1],low:highs5[i+1]};}
   }
 
-  const signals = [];
-  let score = 0;
-
-  // EMA trend
-  if (e9 && e21) {
-    if (cur > e9 && e9 > e21) {
-      signals.push({ icon: '📈', text: `Tendencia alcista en 5m: precio > EMA9 (${e9.toFixed(4)}) > EMA21 (${e21.toFixed(4)})`, bull: true });
-      score += 2;
-    } else if (cur < e9 && e9 < e21) {
-      signals.push({ icon: '📉', text: `Tendencia bajista en 5m: precio < EMA9 (${e9.toFixed(4)}) < EMA21 (${e21.toFixed(4)})`, bull: false });
-      score -= 2;
-    } else {
-      signals.push({ icon: '↔️', text: `EMAs cruzadas — zona de indecisión, esperar definición`, bull: null });
-    }
-  }
-
-  // VWAP
-  if (cur > vwap) {
-    signals.push({ icon: '🏦', text: `Sobre VWAP ($${vwap.toFixed(4)}) — instituciones compradoras`, bull: true }); score += 1;
-  } else {
-    signals.push({ icon: '🏦', text: `Bajo VWAP ($${vwap.toFixed(4)}) — instituciones vendedoras`, bull: false }); score -= 1;
-  }
-
-  // Liquidity Sweep
-  if (bullSweep) {
-    signals.push({ icon: '🌊', text: `Liquidity Sweep alcista — barrió stops en $${recentLow.toFixed(4)} y cerró arriba. Señal de acumulación institucional`, bull: true }); score += 3;
-  } else if (bearSweep) {
-    signals.push({ icon: '🌊', text: `Liquidity Sweep bajista — barrió stops en $${recentHigh.toFixed(4)} y cerró abajo. Señal de distribución institucional`, bull: false }); score -= 3;
-  }
-
-  // Order Block
-  if (bullOB && cur >= bullOB.low * 0.999 && cur <= bullOB.high * 1.003) {
-    signals.push({ icon: '📦', text: `Precio en Order Block alcista ($${bullOB.low.toFixed(4)}-$${bullOB.high.toFixed(4)}) — zona de demanda institucional`, bull: true }); score += 2;
-  }
-  if (bearOB && cur >= bearOB.low * 0.997 && cur <= bearOB.high * 1.001) {
-    signals.push({ icon: '📦', text: `Precio en Order Block bajista ($${bearOB.low.toFixed(4)}-$${bearOB.high.toFixed(4)}) — zona de oferta institucional`, bull: false }); score -= 2;
-  }
-
-  // FVG
-  if (bullFVG && cur >= bullFVG.low && cur <= bullFVG.high) {
-    signals.push({ icon: '🕳️', text: `Fair Value Gap alcista ($${bullFVG.low.toFixed(4)}-$${bullFVG.high.toFixed(4)}) — imbalance, probable relleno al alza`, bull: true }); score += 1;
-  }
-  if (bearFVG && cur >= bearFVG.low && cur <= bearFVG.high) {
-    signals.push({ icon: '🕳️', text: `Fair Value Gap bajista ($${bearFVG.low.toFixed(4)}-$${bearFVG.high.toFixed(4)}) — imbalance, probable relleno a la baja`, bull: false }); score -= 1;
-  }
-
-  // RSI
-  if (rsiCur < 35 && rsiCur > rsiPrev) {
-    signals.push({ icon: '⚡', text: `RSI ${rsiCur.toFixed(1)} — sobreventa con recuperación, momentum alcista`, bull: true }); score += 2;
-  } else if (rsiCur > 65 && rsiCur < rsiPrev) {
-    signals.push({ icon: '⚡', text: `RSI ${rsiCur.toFixed(1)} — sobrecompra con debilitamiento, momentum bajista`, bull: false }); score -= 2;
-  } else if (rsiCur > 50) {
-    signals.push({ icon: '📊', text: `RSI ${rsiCur.toFixed(1)} — zona de fuerza (>50)`, bull: true }); score += 1;
-  } else {
-    signals.push({ icon: '📊', text: `RSI ${rsiCur.toFixed(1)} — zona de debilidad (<50)`, bull: false }); score -= 1;
-  }
+  // RSI divergencia (precio hace nuevo mínimo pero RSI no)
+  const rsiDivBull=lows5[n-1]<lows5[n-6]&&rsiCur>(rsi14arr[n-6]||rsiCur);
+  const rsiDivBear=highs5[n-1]>highs5[n-6]&&rsiCur<(rsi14arr[n-6]||rsiCur);
 
   // Contexto 15m
-  if (bars15m && bars15m.length >= 21) {
-    const c15 = bars15m.map(b => b.close);
-    const e21_15 = ema(c15, 21);
-    const cur15 = c15[c15.length - 1], e21cur = e21_15[e21_15.length - 1];
-    if (cur15 > e21cur) {
-      signals.push({ icon: '🕰️', text: `Contexto 15m alcista — precio sobre EMA21 en timeframe superior (confluencia)`, bull: true }); score += 1;
-    } else {
-      signals.push({ icon: '🕰️', text: `Contexto 15m bajista — precio bajo EMA21 (divergencia con 5m)`, bull: false }); score -= 1;
-    }
+  let context15m=null;
+  if(bars15m&&bars15m.length>=21){
+    const c15=bars15m.map(b=>b.close);
+    const e21_15=ema(c15,21);
+    const cur15=c15[c15.length-1];
+    const e21cur=e21_15[e21_15.length-1];
+    context15m={bullish:cur15>e21cur,e21:e21cur,cur:cur15};
   }
 
-  // Dirección y TP/SL/Leverage
-  let direction = 'NEUTRAL';
-  if (score >= 4) direction = 'LONG';
-  else if (score <= -4) direction = 'SHORT';
+  // ── SCORING con pesos diferenciados ──
+  const signals=[];
+  let bullPoints=0, bearPoints=0;
 
-  let entry = cur, tp = null, sl = null, leverage = null, rr = null;
-  if (direction === 'LONG') {
-    entry = bullOB ? Math.max(bullOB.high, e9 || cur) : cur;
-    entry = Math.min(entry, cur * 1.002);
-    sl = entry - atrCur * 1.2;
-    tp = entry + atrCur * 2.2;
-    rr = +((tp - entry) / (entry - sl)).toFixed(2);
-  } else if (direction === 'SHORT') {
-    entry = bearOB ? Math.min(bearOB.low, e9 || cur) : cur;
-    entry = Math.max(entry, cur * 0.998);
-    sl = entry + atrCur * 1.2;
-    tp = entry - atrCur * 2.2;
-    rr = +((entry - tp) / (sl - entry)).toFixed(2);
+  // Peso 3: señales ICT primarias
+  if(bullSweep){signals.push({icon:'🌊',text:`Liquidity Sweep ALCISTA — barrió stops bajo $${swingLow.toFixed(4)} y cerró arriba. Señal de acumulación institucional fuerte`,bull:true});bullPoints+=3;}
+  if(bearSweep){signals.push({icon:'🌊',text:`Liquidity Sweep BAJISTA — barrió stops sobre $${swingHigh.toFixed(4)} y cerró abajo. Señal de distribución institucional fuerte`,bull:false});bearPoints+=3;}
+
+  if(bullOB&&cur>=bullOB.low*0.998&&cur<=bullOB.high*1.005){
+    signals.push({icon:'📦',text:`Order Block ALCISTA ($${bullOB.low.toFixed(4)}-$${bullOB.high.toFixed(4)}) — zona de demanda institucional con ${bullOB.impulse}x ATR de impulso posterior`,bull:true});bullPoints+=3;
+  }
+  if(bearOB&&cur>=bearOB.low*0.995&&cur<=bearOB.high*1.002){
+    signals.push({icon:'📦',text:`Order Block BAJISTA ($${bearOB.low.toFixed(4)}-$${bearOB.high.toFixed(4)}) — zona de oferta institucional con ${bearOB.impulse}x ATR de impulso posterior`,bull:false});bearPoints+=3;
   }
 
-  // Leverage basado en ATR%
-  const atrPct = (atrCur / cur) * 100;
-  leverage = atrPct > 4 ? 3 : atrPct > 2.5 ? 5 : atrPct > 1.5 ? 8 : atrPct > 0.8 ? 12 : atrPct > 0.4 ? 15 : 20;
+  // Peso 2: confirmación
+  if(e9&&e21){
+    if(cur>e9&&e9>e21){signals.push({icon:'📈',text:`EMA 9 (${e9.toFixed(4)}) > EMA 21 (${e21.toFixed(4)}) — tendencia alcista en 5m confirmada`,bull:true});bullPoints+=2;}
+    else if(cur<e9&&e9<e21){signals.push({icon:'📉',text:`EMA 9 (${e9.toFixed(4)}) < EMA 21 (${e21.toFixed(4)}) — tendencia bajista en 5m confirmada`,bull:false});bearPoints+=2;}
+    else{signals.push({icon:'↔️',text:`EMAs entrelazadas — zona de indecisión, evitar entrar`,bull:null});}
+  }
 
-  let verdict, verdictColor, verdictIcon;
-  if (direction === 'LONG')    { verdict = 'LONG';    verdictColor = '#22c55e'; verdictIcon = '🟢'; }
-  else if (direction === 'SHORT') { verdict = 'SHORT'; verdictColor = '#ef4444'; verdictIcon = '🔴'; }
-  else                         { verdict = 'NEUTRAL'; verdictColor = '#eab308'; verdictIcon = '⚖️'; }
+  if(bullFVG&&cur>=bullFVG.low&&cur<=bullFVG.high){signals.push({icon:'🕳️',text:`Fair Value Gap alcista ($${bullFVG.low.toFixed(4)}-$${bullFVG.high.toFixed(4)}) — imbalance por rellenar al alza`,bull:true});bullPoints+=2;}
+  if(bearFVG&&cur>=bearFVG.low&&cur<=bearFVG.high){signals.push({icon:'🕳️',text:`Fair Value Gap bajista ($${bearFVG.low.toFixed(4)}-$${bearFVG.high.toFixed(4)}) — imbalance por rellenar a la baja`,bull:false});bearPoints+=2;}
+
+  if(rsiDivBull){signals.push({icon:'⚡',text:`Divergencia alcista RSI — precio hace nuevo mínimo pero RSI no confirma. Agotamiento vendedor`,bull:true});bullPoints+=2;}
+  if(rsiDivBear){signals.push({icon:'⚡',text:`Divergencia bajista RSI — precio hace nuevo máximo pero RSI no confirma. Agotamiento comprador`,bull:false});bearPoints+=2;}
+
+  // Peso 1: contexto
+  if(cur>vwap){signals.push({icon:'🏦',text:`Sobre VWAP ($${vwap.toFixed(4)}) — precio en zona institucional compradora`,bull:true});bullPoints+=1;}
+  else{signals.push({icon:'🏦',text:`Bajo VWAP ($${vwap.toFixed(4)}) — precio en zona institucional vendedora`,bull:false});bearPoints+=1;}
+
+  if(rsiCur!=null){
+    if(rsiCur<35){signals.push({icon:'📊',text:`RSI ${rsiCur.toFixed(1)} — sobreventa en 5m`,bull:true});bullPoints+=1;}
+    else if(rsiCur>65){signals.push({icon:'📊',text:`RSI ${rsiCur.toFixed(1)} — sobrecompra en 5m`,bull:false});bearPoints+=1;}
+    else if(rsiCur>50){signals.push({icon:'📊',text:`RSI ${rsiCur.toFixed(1)} — zona de fuerza`,bull:true});bullPoints+=0.5;}
+    else{signals.push({icon:'📊',text:`RSI ${rsiCur.toFixed(1)} — zona de debilidad`,bull:false});bearPoints+=0.5;}
+  }
+
+  if(context15m){
+    if(context15m.bullish){signals.push({icon:'🕰️',text:`Contexto 15m alcista — confluencia con tendencia de timeframe mayor`,bull:true});bullPoints+=1;}
+    else{signals.push({icon:'🕰️',text:`Contexto 15m bajista — ir long en 5m es contra tendencia mayor (mayor riesgo)`,bull:false});bearPoints+=1;}
+  }
+
+  // ── DECISIÓN: necesita ventaja CLARA ──
+  const score=bullPoints-bearPoints;
+  let direction='NEUTRAL';
+  // Requiere al menos una señal ICT primaria (sweep o OB) para dar LONG/SHORT
+  const hasPrimaryBull=(bullSweep||(bullOB&&cur>=bullOB.low*0.998&&cur<=bullOB.high*1.005)||rsiDivBull);
+  const hasPrimaryBear=(bearSweep||(bearOB&&cur>=bearOB.low*0.995&&cur<=bearOB.high*1.002)||rsiDivBear);
+  if(score>=3&&hasPrimaryBull)direction='LONG';
+  else if(score<=-3&&hasPrimaryBear)direction='SHORT';
+
+  // TP/SL basados en ATR + niveles naturales
+  let entry=cur, tp=null, sl=null, leverage=null, rr=null;
+  const atrPct=(atrCur/cur)*100;
+
+  if(direction==='LONG'){
+    // Entry: mejor precio posible (OB o precio actual)
+    entry=bullOB?Math.min(cur,bullOB.high*1.001):cur;
+    // SL: bajo el OB o 1.5x ATR
+    sl=bullOB?bullOB.low*0.999:entry-atrCur*1.5;
+    // TP: próxima resistencia o 2.5x ATR (R:R mínimo 1.5:1)
+    const dist=entry-sl;
+    tp=entry+Math.max(dist*1.5, atrCur*2.5);
+    rr=+((tp-entry)/(entry-sl)).toFixed(2);
+  } else if(direction==='SHORT'){
+    entry=bearOB?Math.max(cur,bearOB.low*0.999):cur;
+    sl=bearOB?bearOB.high*1.001:entry+atrCur*1.5;
+    const dist=sl-entry;
+    tp=entry-Math.max(dist*1.5, atrCur*2.5);
+    rr=+((entry-tp)/(sl-entry)).toFixed(2);
+  }
+
+  // Leverage conservador — max exposición 1 ATR por unidad
+  leverage=atrPct>4?3:atrPct>2.5?5:atrPct>1.5?8:atrPct>0.8?12:atrPct>0.4?15:20;
+
+  let verdict,verdictColor,verdictIcon;
+  if(direction==='LONG'){verdict='LONG';verdictColor='#22c55e';verdictIcon='🟢';}
+  else if(direction==='SHORT'){verdict='SHORT';verdictColor='#ef4444';verdictIcon='🔴';}
+  else{verdict='SIN SETUP';verdictColor='#eab308';verdictIcon='⚖️';}
 
   return {
-    ticker: sym, pair: `${sym}USDT`, mode: 'scalp',
-    currentPrice: cur, verdict, verdictColor, verdictIcon, score, direction,
-    entry: entry ? +entry.toFixed(6) : null,
-    tp: tp ? +tp.toFixed(6) : null,
-    sl: sl ? +sl.toFixed(6) : null,
-    leverage, rr,
-    atr: +atrCur.toFixed(6),
-    rsi: rsiCur ? +rsiCur.toFixed(1) : null,
-    ema9: e9 ? +e9.toFixed(6) : null,
-    ema21: e21 ? +e21.toFixed(6) : null,
-    vwap: +vwap.toFixed(6),
-    bullSweep, bearSweep, bullOB, bearOB, bullFVG, bearFVG,
-    signals, timeframe: '5m',
-    analyzedAt: new Date().toISOString(),
+    ticker:sym,pair:`${sym}USDT`,mode:'scalp',
+    currentPrice:+cur.toFixed(6),
+    verdict,verdictColor,verdictIcon,score:+score.toFixed(1),direction,
+    entry:entry?+entry.toFixed(6):null,
+    tp:tp?+tp.toFixed(6):null,
+    sl:sl?+sl.toFixed(6):null,
+    leverage,rr,
+    atr:+atrCur.toFixed(6),
+    atrPct:+atrPct.toFixed(3),
+    rsi:rsiCur?+rsiCur.toFixed(1):null,
+    ema9:e9?+e9.toFixed(6):null,
+    ema21:e21?+e21.toFixed(6):null,
+    vwap:+vwap.toFixed(6),
+    bullSweep,bearSweep,bullOB,bearOB,bullFVG,bearFVG,
+    rsiDivBull,rsiDivBear,
+    context15m,
+    signals,
+    timeframe:'5m',
+    analyzedAt:new Date().toISOString(),
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SPOT — Weinstein + EMA + RSI + Fibonacci + Predicciones
-// ─────────────────────────────────────────────────────────────────────────────
-
-const CGIDS = {
-  BTC:'bitcoin',ETH:'ethereum',SOL:'solana',ADA:'cardano',DOT:'polkadot',
-  AVAX:'avalanche-2',MATIC:'matic-network',POL:'matic-network',LINK:'chainlink',
-  XRP:'ripple',LTC:'litecoin',BNB:'binancecoin',DOGE:'dogecoin',SHIB:'shiba-inu',
-  UNI:'uniswap',ATOM:'cosmos',NEAR:'near',OP:'optimism',ARB:'arbitrum',
-  WIF:'dogwifcoin',PEPE:'pepe',TON:'the-open-network',SUI:'sui',APT:'aptos',
-  INJ:'injective-protocol',TIA:'celestia',SEI:'sei-network',THETA:'theta-token',
-  TFUEL:'theta-fuel',SAND:'the-sandbox',MANA:'decentraland',AXS:'axie-infinity',
-  FIL:'filecoin',ICP:'internet-computer',VET:'vechain',HBAR:'hedera-hashgraph',
-  ALGO:'algorand',XLM:'stellar',ETC:'ethereum-classic',BCH:'bitcoin-cash',
-  AAVE:'aave',MKR:'maker',LDO:'lido-dao',RUNE:'thorchain',FTM:'fantom',
-  GRT:'the-graph',FLOW:'flow',KAVA:'kava',ZEC:'zcash',DASH:'dash',
-  XMR:'monero',XTZ:'tezos',LUNA:'terra-luna-2',
-  SNX:'synthetix-network-token',CRV:'curve-dao-token',SUSHI:'sushi',
-  YFI:'yearn-finance',COMP:'compound-governance-token',BAT:'basic-attention-token',
-  ONE:'harmony',ENJ:'enjincoin',CHZ:'chiliz',OCEAN:'ocean-protocol',ANKR:'ankr',
-  DYDX:'dydx-chain',STX:'blockstack',RENDER:'render-token',FET:'fetch-ai',
-  WLD:'worldcoin-wld',PYTH:'pyth-network',JTO:'jito-governance-token',
-};
-const CRYPTO_SET = new Set(Object.keys(CGIDS));
+// ═══════════════════════════════════════════════════════════
+// SPOT — Weinstein + EMA + RSI + Fibonacci + Proyección realista
+// ═══════════════════════════════════════════════════════════
 
 async function analyzeSpot(sym) {
-  const isCrypto = CRYPTO_SET.has(sym);
-  let bars;
-  if (isCrypto) {
-    bars = await fetchCGHistory(CGIDS[sym] || sym.toLowerCase());
-  } else {
-    // Acciones/ETFs/CEDEARs
-    const yahooSym = sym.endsWith('.BA') ? sym : sym;
-    bars = await fetchYahooHistory(yahooSym);
+  const isCrypto=CRYPTO_SET.has(sym);
+  const bars=isCrypto
+    ? await fetchCGHistory(CGIDS[sym]||sym.toLowerCase())
+    : await fetchYahooHistory(sym);
+
+  if(!bars||bars.length<60){
+    return{error:`Datos insuficientes para "${sym}". Si es cripto verificá el ticker. Si es acción usá el símbolo NYSE/NASDAQ.`,ticker:sym};
   }
 
-  if (!bars || bars.length < 60) {
-    return { error: `Datos insuficientes para "${sym}". Si es cripto verificá el ticker. Si es acción usá el símbolo de NYSE/NASDAQ.`, ticker: sym };
+  const closes=bars.map(b=>b.close);
+  const highs=bars.map(b=>b.high||b.close);
+  const lows=bars.map(b=>b.low||b.close);
+  const volumes=bars.map(b=>b.volume||0);
+  const n=closes.length;
+  const cur=closes[n-1];
+
+  // Indicadores
+  const ema20arr=ema(closes,20);
+  const ema50arr=ema(closes,50);
+  const ema200arr=ema(closes,Math.min(200,n-1));
+  const rsi14arr=rsi(closes,14);
+  const vol20arr=sma(volumes,20);
+  const atr14arr=atr(highs,lows,closes,14);
+
+  const e20=ema20arr[n-1], e50=ema50arr[n-1], e200=ema200arr[n-1];
+  const rsiCur=rsi14arr[n-1], rsiPrev=rsi14arr[n-2];
+  const volCur=volumes[n-1], volAvg=vol20arr[n-1];
+  const volRatio=volAvg>0?volCur/volAvg:1;
+  const atrCur=atr14arr[n-1]||(cur*0.02);
+
+  // 52w range
+  const w=Math.min(252,n);
+  const high52w=Math.max(...highs.slice(n-w));
+  const low52w=Math.min(...lows.slice(n-w));
+  const distFromHigh=((cur-high52w)/high52w)*100;
+  const distFromLow=((cur-low52w)/low52w)*100;
+
+  // Fibonacci
+  const fib=fibonacci(high52w,low52w);
+
+  // Stage Weinstein — usa MA30 (media de 30 días) como referencia original
+  const ma30arr=sma(closes,30);
+  const ma30=ma30arr[n-1];
+  const ma30Prev=ma30arr[n-8]||ma30;
+  let stage=1,stageName='Base (Stage 1)';
+  const ma30Rising=ma30>ma30Prev*1.001;
+  const ma30Falling=ma30<ma30Prev*0.999;
+  if(cur>ma30&&ma30Rising){stage=2;stageName='Avance (Stage 2) ✅';}
+  else if(cur>ma30&&!ma30Rising&&!ma30Falling){stage=3;stageName='Distribución (Stage 3) ⚠️';}
+  else if(cur<ma30&&(ma30Falling||!ma30Rising)){stage=4;stageName='Declive (Stage 4) 🔴';}
+
+  // Proyección realista
+  const projShort=realisticProjection(closes.slice(-30),[7,14,21]);
+  const projMedium=realisticProjection(closes.slice(-90),[30,60,90]);
+  const projLong=realisticProjection(closes.slice(-180),[90,180,365]);
+
+  // Soporte/resistencia
+  const supLevels=findLevels(lows,n,60,'support').filter(l=>l.price<cur).slice(0,3);
+  const resLevels=findLevels(highs,n,60,'resistance').filter(l=>l.price>cur).slice(0,3);
+
+  // ── SEÑALES con pesos diferenciados ──
+  const signals=[];
+  let bullPts=0, bearPts=0;
+
+  // Peso 3: Weinstein Stage (señal primaria)
+  if(stage===2){signals.push({icon:'🟢',text:`Stage 2 (Weinstein): MA30 subiendo con precio arriba — zona de compra óptima según Weinstein`,bull:true});bullPts+=3;}
+  else if(stage===4){signals.push({icon:'🔴',text:`Stage 4 (Weinstein): MA30 bajando con precio abajo — evitar o vender`,bull:false});bearPts+=3;}
+  else if(stage===1){signals.push({icon:'⏳',text:`Stage 1 (Weinstein): base/acumulación — esperar ruptura con volumen para confirmar Stage 2`,bull:null});}
+  else if(stage===3){signals.push({icon:'⚠️',text:`Stage 3 (Weinstein): distribución — MA30 aplanando, reducir exposición`,bull:false});bearPts+=2;}
+
+  // Peso 2: Alineación de EMAs
+  if(e20&&e50&&e200){
+    if(cur>e20&&e20>e50&&e50>e200){signals.push({icon:'📈',text:`Alineación alcista perfecta: precio > EMA20 > EMA50 > EMA200`,bull:true});bullPts+=2;}
+    else if(cur<e20&&e20<e50&&e50<e200){signals.push({icon:'📉',text:`Alineación bajista perfecta: precio < EMA20 < EMA50 < EMA200`,bull:false});bearPts+=2;}
+    else if(cur>e50&&e50>e200){signals.push({icon:'🔼',text:`Precio sobre EMA50 y EMA200 — sesgo alcista intermedio`,bull:true});bullPts+=1;}
+    else if(cur<e50&&e200&&cur<e200){signals.push({icon:'🔽',text:`Precio bajo EMA50 y EMA200 — sesgo bajista`,bull:false});bearPts+=1;}
+    else{signals.push({icon:'↔️',text:`EMAs mixtas — tendencia no clara, esperar definición`,bull:null});}
   }
 
-  const closes  = bars.map(b => b.close);
-  const highs   = bars.map(b => b.high || b.close);
-  const lows    = bars.map(b => b.low  || b.close);
-  const volumes = bars.map(b => b.volume || 0);
-  const n = closes.length;
-  const cur = closes[n - 1];
-
-  // Indicadores base
-  const ema20arr  = ema(closes, 20);
-  const ema50arr  = ema(closes, 50);
-  const ema200arr = ema(closes, Math.min(200, n - 1));
-  const rsi14arr  = rsi(closes, 14);
-  const vol20arr  = sma(volumes, 20);
-  const atr14arr  = atr(highs, lows, closes, 14);
-
-  const e20 = ema20arr[n-1], e50 = ema50arr[n-1], e200 = ema200arr[n-1];
-  const rsiCur = rsi14arr[n-1], rsiPrev = rsi14arr[n-2];
-  const volCur = volumes[n-1], volAvg = vol20arr[n-1];
-  const volRatio = volAvg > 0 ? volCur / volAvg : 1;
-  const atrCur = atr14arr[n-1] || (cur * 0.02);
-
-  // 52-week range
-  const windowBars = Math.min(252, n);
-  const high52w = Math.max(...highs.slice(n - windowBars));
-  const low52w  = Math.min(...lows.slice(n - windowBars));
-  const distFromHigh = ((cur - high52w) / high52w) * 100;
-  const distFromLow  = ((cur - low52w)  / low52w)  * 100;
-
-  // Fibonacci sobre el swing del último año
-  const fib = fibonacci(high52w, low52w);
-
-  // Stage Weinstein
-  let stage = 1, stageName = 'Base (Stage 1)';
-  if (e50) {
-    const e50Prev = ema50arr[n - 8] || e50;
-    const rising = e50 > e50Prev;
-    if (cur > e50 && rising)  { stage = 2; stageName = 'Avance (Stage 2)'; }
-    if (cur > e50 && !rising) { stage = 3; stageName = 'Distribución (Stage 3)'; }
-    if (cur < e50 && !rising) { stage = 4; stageName = 'Declive (Stage 4)'; }
+  // Peso 2: RSI con contexto
+  if(rsiCur!=null){
+    if(rsiCur<30&&rsiCur>rsiPrev){signals.push({icon:'⚡',text:`RSI ${rsiCur.toFixed(1)} — sobreventa con recuperación. Posible reversión alcista`,bull:true});bullPts+=2;}
+    else if(rsiCur>70&&rsiCur<rsiPrev){signals.push({icon:'⚠️',text:`RSI ${rsiCur.toFixed(1)} — sobrecompra con debilitamiento. Posible corrección`,bull:false});bearPts+=2;}
+    else if(rsiCur<30){signals.push({icon:'⚡',text:`RSI ${rsiCur.toFixed(1)} — sobreventa extrema (potencial rebote técnico)`,bull:true});bullPts+=1;}
+    else if(rsiCur>70){signals.push({icon:'⚠️',text:`RSI ${rsiCur.toFixed(1)} — sobrecompra (precaución)`,bull:false});bearPts+=1;}
+    else if(rsiCur>55&&rsiCur>rsiPrev){signals.push({icon:'✅',text:`RSI ${rsiCur.toFixed(1)} — momentum alcista creciente`,bull:true});bullPts+=1;}
+    else if(rsiCur<45&&rsiCur<rsiPrev){signals.push({icon:'🔴',text:`RSI ${rsiCur.toFixed(1)} — momentum bajista decreciente`,bull:false});bearPts+=1;}
+    else{signals.push({icon:'➡️',text:`RSI ${rsiCur.toFixed(1)} — zona neutral`,bull:null});}
   }
 
-  // Regresión lineal para proyección
-  const reg30  = linearRegression(closes.slice(-30), [7, 14, 30]);   // Mediano plazo (30d base)
-  const reg90  = linearRegression(closes.slice(-90), [30, 60, 90]);  // Largo plazo (90d base)
-  const reg7   = linearRegression(closes.slice(-7),  [3, 5, 7]);     // Corto plazo (7d base)
+  // Peso 1: Volumen
+  if(volRatio>2&&cur>closes[n-2]){signals.push({icon:'🔊',text:`Volumen ${volRatio.toFixed(1)}x el promedio en vela verde — acumulación fuerte`,bull:true});bullPts+=1;}
+  else if(volRatio>2&&cur<closes[n-2]){signals.push({icon:'🔊',text:`Volumen ${volRatio.toFixed(1)}x en vela roja — distribución fuerte`,bull:false});bearPts+=1;}
+  else if(volRatio>1.5){signals.push({icon:'📢',text:`Volumen ${volRatio.toFixed(1)}x por encima del promedio — movimiento con convicción`,bull:cur>closes[n-2]});}
 
-  // Soporte/resistencia por clusters de precios
-  const supports    = findSupports(lows, n);
-  const resistances = findResistances(highs, n);
+  // Peso 1: Posición en rango anual
+  if(distFromHigh>-3){signals.push({icon:'🏔️',text:`A solo ${Math.abs(distFromHigh).toFixed(1)}% del máximo 52s ($${high52w.toFixed(4)}) — resistencia histórica clave`,bull:null});}
+  else if(distFromLow<5){signals.push({icon:'🪃',text:`A ${distFromLow.toFixed(1)}% del mínimo 52s ($${low52w.toFixed(4)}) — soporte histórico, riesgo/recompensa favorable`,bull:true});bullPts+=1;}
 
-  // Señales
-  const signals = [];
-  let score = 0;
-
-  if (e20 && e50 && e200) {
-    if (cur > e20 && e20 > e50 && e50 > e200) {
-      signals.push({ icon: '📈', text: `Tendencia alcista perfecta: precio > EMA20 > EMA50 > EMA200`, bull: true }); score += 3;
-    } else if (cur < e20 && e20 < e50 && e50 < e200) {
-      signals.push({ icon: '📉', text: `Tendencia bajista perfecta: precio < EMA20 < EMA50 < EMA200`, bull: false }); score -= 3;
-    } else if (cur > e50 && e50 > e200) {
-      signals.push({ icon: '🔼', text: `Tendencia alcista intermedia: precio sobre EMA50 y EMA200`, bull: true }); score += 2;
-    } else if (cur < e50) {
-      signals.push({ icon: '🔽', text: `Precio bajo EMA50 — sesgo bajista`, bull: false }); score -= 1;
-    }
-  }
-
-  if (rsiCur != null) {
-    if (rsiCur < 30) { signals.push({ icon: '⚡', text: `RSI ${rsiCur.toFixed(1)} — sobreventa extrema, posible reversión alcista`, bull: true }); score += 2; }
-    else if (rsiCur > 70) { signals.push({ icon: '⚠️', text: `RSI ${rsiCur.toFixed(1)} — sobrecompra, riesgo de corrección`, bull: false }); score -= 2; }
-    else if (rsiCur > 55 && rsiCur > rsiPrev) { signals.push({ icon: '✅', text: `RSI ${rsiCur.toFixed(1)} — momentum alcista creciente`, bull: true }); score += 1; }
-    else if (rsiCur < 45 && rsiCur < rsiPrev) { signals.push({ icon: '🔴', text: `RSI ${rsiCur.toFixed(1)} — momentum bajista`, bull: false }); score -= 1; }
-    else { signals.push({ icon: '➡️', text: `RSI ${rsiCur.toFixed(1)} — zona neutral`, bull: null }); }
-  }
-
-  if (volRatio > 2 && cur > closes[n-2]) { signals.push({ icon: '🔊', text: `Volumen ${volRatio.toFixed(1)}x el promedio con cierre al alza — señal de acumulación fuerte`, bull: true }); score += 2; }
-  else if (volRatio > 2) { signals.push({ icon: '🔊', text: `Volumen ${volRatio.toFixed(1)}x el promedio con cierre a la baja — señal de distribución fuerte`, bull: false }); score -= 2; }
-  else if (volRatio > 1.4 && cur > closes[n-2]) { signals.push({ icon: '📢', text: `Volumen ${volRatio.toFixed(1)}x — fuerza compradora`, bull: true }); score += 1; }
-
-  if (stage === 2) { signals.push({ icon: '🟢', text: `Stage 2 (Weinstein): tendencia alcista confirmada — zona ideal de compra`, bull: true }); score += 2; }
-  else if (stage === 4) { signals.push({ icon: '🔴', text: `Stage 4 (Weinstein): tendencia bajista — evitar o vender`, bull: false }); score -= 2; }
-  else if (stage === 1) { signals.push({ icon: '⏳', text: `Stage 1 (Weinstein): acumulación — esperar ruptura al alza con volumen`, bull: null }); }
-  else if (stage === 3) { signals.push({ icon: '⚠️', text: `Stage 3 (Weinstein): distribución — reducir posición`, bull: false }); score -= 1; }
-
-  // Fibonacci niveles cercanos
-  const fibLevels = [
-    { key: 'r_236', label: '23.6%', val: fib.r_236 },
-    { key: 'r_382', label: '38.2%', val: fib.r_382 },
-    { key: 'r_500', label: '50.0%', val: fib.r_500 },
-    { key: 'r_618', label: '61.8%', val: fib.r_618 },
-    { key: 'r_786', label: '78.6%', val: fib.r_786 },
+  // Fibonacci cercano
+  const fibLevels=[
+    {l:'Ret 23.6%',v:fib.r_236},{l:'Ret 38.2%',v:fib.r_382},{l:'Ret 50%',v:fib.r_500},
+    {l:'Ret 61.8%',v:fib.r_618},{l:'Ret 78.6%',v:fib.r_786},
   ];
-  const nearFib = fibLevels.filter(f => Math.abs(f.val - cur) / cur < 0.02);
-  if (nearFib.length > 0) {
-    signals.push({ icon: '🌀', text: `Precio cerca del nivel Fibonacci ${nearFib[0].label} ($${nearFib[0].val.toFixed(4)}) — nivel técnico clave`, bull: null });
-  }
+  const nearFib=fibLevels.filter(f=>Math.abs(f.v-cur)/cur<0.018);
+  if(nearFib.length){signals.push({icon:'🌀',text:`Precio en nivel Fibonacci ${nearFib[0].l} ($${nearFib[0].v.toFixed(4)}) — zona técnica de alta confluencia`,bull:null});}
 
-  if (distFromHigh > -5) { signals.push({ icon: '🏔️', text: `Cerca del máximo 52 semanas ($${high52w.toFixed(4)}) — resistencia histórica`, bull: null }); }
-  else if (distFromLow < 8) { signals.push({ icon: '🪃', text: `Cerca del mínimo 52 semanas ($${low52w.toFixed(4)}) — soporte histórico clave`, bull: true }); score += 1; }
-
-  let verdict, verdictColor, verdictIcon;
-  if (score >= 5)       { verdict = 'Compra fuerte';  verdictColor = '#22c55e'; verdictIcon = '🟢'; }
-  else if (score >= 2)  { verdict = 'Compra';          verdictColor = '#86efac'; verdictIcon = '🔼'; }
-  else if (score >= -1) { verdict = 'Neutral';          verdictColor = '#eab308'; verdictIcon = '⚖️'; }
-  else if (score >= -4) { verdict = 'Venta';            verdictColor = '#fca5a5'; verdictIcon = '🔽'; }
-  else                  { verdict = 'Venta fuerte';    verdictColor = '#ef4444'; verdictIcon = '🔴'; }
+  // Veredicto final
+  const score=bullPts-bearPts;
+  let verdict,verdictColor,verdictIcon;
+  if(score>=5){verdict='Compra fuerte';verdictColor='#22c55e';verdictIcon='🟢';}
+  else if(score>=2){verdict='Compra';verdictColor='#86efac';verdictIcon='🔼';}
+  else if(score>=0){verdict='Neutral';verdictColor='#eab308';verdictIcon='⚖️';}
+  else if(score>=-3){verdict='Venta';verdictColor='#fca5a5';verdictIcon='🔽';}
+  else{verdict='Venta fuerte';verdictColor='#ef4444';verdictIcon='🔴';}
 
   return {
-    ticker: sym, mode: 'spot',
-    currentPrice: cur, verdict, verdictColor, verdictIcon, score,
-    stage: stageName,
-    ema20: e20, ema50: e50, ema200: e200,
-    rsi: rsiCur, volRatio, atr: atrCur,
-    high52w, low52w, distFromHigh, distFromLow,
-    fibonacci: fib,
-    nearFibLevels: nearFib,
-    supports: supports.slice(0, 3),
-    resistances: resistances.slice(0, 3),
-    regression: {
-      shortTerm:  reg7.projections,
-      mediumTerm: reg30.projections,
-      longTerm:   reg90.projections,
-      slope30d: reg30.slope,
+    ticker:sym,mode:'spot',
+    currentPrice:cur,verdict,verdictColor,verdictIcon,score,
+    stage:stageName,ma30,
+    ema20:e20,ema50:e50,ema200:e200,
+    rsi:rsiCur,volRatio,atr:atrCur,
+    high52w,low52w,distFromHigh,distFromLow,
+    fibonacci:fib,nearFibLevels:nearFib,
+    supports:supLevels,resistances:resLevels,
+    projections:{
+      short:projShort,   // 7,14,21 días
+      medium:projMedium, // 30,60,90 días
+      long:projLong,     // 90,180,365 días
     },
     signals,
-    analyzedAt: new Date().toISOString(),
-    barsCount: n,
+    analyzedAt:new Date().toISOString(),
+    barsCount:n,
   };
-}
-
-function findSupports(lows, n, lookback = 60) {
-  const result = [];
-  const slice = lows.slice(Math.max(0, n - lookback), n);
-  const sorted = [...new Set(slice.map(v => Math.round(v * 1000) / 1000))].sort((a, b) => a - b);
-  // Agrupa precios cercanos
-  let group = [sorted[0]];
-  for (let i = 1; i < sorted.length; i++) {
-    if ((sorted[i] - group[group.length-1]) / group[group.length-1] < 0.008) {
-      group.push(sorted[i]);
-    } else {
-      result.push(group.reduce((a, b) => a + b, 0) / group.length);
-      group = [sorted[i]];
-    }
-  }
-  if (group.length) result.push(group.reduce((a, b) => a + b, 0) / group.length);
-  return result.sort((a, b) => b - a); // más cercano al precio actual primero
-}
-
-function findResistances(highs, n, lookback = 60) {
-  const slice = highs.slice(Math.max(0, n - lookback), n);
-  const sorted = [...new Set(slice.map(v => Math.round(v * 1000) / 1000))].sort((a, b) => b - a);
-  const result = [];
-  let group = [sorted[0]];
-  for (let i = 1; i < sorted.length; i++) {
-    if ((group[group.length-1] - sorted[i]) / group[group.length-1] < 0.008) {
-      group.push(sorted[i]);
-    } else {
-      result.push(group.reduce((a, b) => a + b, 0) / group.length);
-      group = [sorted[i]];
-    }
-  }
-  if (group.length) result.push(group.reduce((a, b) => a + b, 0) / group.length);
-  return result;
 }

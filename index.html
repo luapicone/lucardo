@@ -118,6 +118,24 @@ td.empty-state{text-align:center;padding:20px}
 .btn-cancel{padding:8px 16px;border:1px solid var(--border-md);border-radius:8px;background:transparent;color:var(--text-s);font-size:13px;cursor:pointer;font-family:var(--sans)}
 .btn-confirm{padding:8px 16px;border:none;border-radius:8px;background:var(--green);color:#000;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)}
 
+/* NEWS */
+.news-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:10px}
+.news-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}
+.news-title{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;flex:1}
+.impact-badge{padding:3px 10px;border-radius:99px;font-size:11px;font-weight:500;border:1px solid;white-space:nowrap;flex-shrink:0}
+.news-meta{display:flex;gap:12px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.news-source{font-size:10px;color:var(--text-t)}
+.news-horizon{font-size:10px;color:var(--text-t)}
+.news-summary{font-size:12px;color:var(--text-s);line-height:1.6;margin-bottom:8px}
+.news-assets{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px}
+.news-markets{display:flex;gap:5px;flex-wrap:wrap}
+.market-tag{font-size:10px;padding:2px 7px;border-radius:99px;background:var(--bg-hover);border:1px solid var(--border-md);color:var(--text-s)}
+.asset-tag{font-size:10px;padding:2px 7px;border-radius:99px;border:1px solid;font-family:var(--mono)}
+.magnitude-bar{display:flex;align-items:center;gap:8px;margin-top:6px}
+.mag-label{font-size:10px;color:var(--text-t);width:60px;flex-shrink:0}
+.mag-track{flex:1;height:4px;background:var(--bg-hover);border-radius:2px;overflow:hidden}
+.mag-fill{height:100%;border-radius:2px}
+.mag-val{font-family:var(--mono);font-size:11px;color:var(--text-s);width:20px;text-align:right}
 /* SIGNALS */
 .sig-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl)}
 .mode-toggle{display:flex;gap:3px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:3px}
@@ -207,6 +225,7 @@ td.empty-state{text-align:center;padding:20px}
     <button class="tab" data-view="inc">Ingresos</button>
     <button class="tab" data-view="hist">Historial</button>
       <button class="tab" data-view="signals">Señales</button>
+      <button class="tab" data-view="news">Noticias</button>
   </nav>
   <div class="header-actions">
     <button class="icon-btn" id="refresh-btn">
@@ -312,6 +331,20 @@ td.empty-state{text-align:center;padding:20px}
         </div>
       </div>
       <div id="signals-list"><p class="empty-state">Seleccioná un modo, escribí un ticker y hacé click en Analizar.</p></div>
+    </section>
+
+    <section class="view" id="view-news">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-size:13px;font-weight:500">Noticias con impacto en mercados</div>
+          <div style="font-size:11px;color:var(--text-t);margin-top:3px">Analizadas por IA — efecto esperado en precios</div>
+        </div>
+        <button class="icon-btn" id="refresh-news-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Actualizar
+        </button>
+      </div>
+      <div id="news-list"><p class="empty-state">Hacé click en "Actualizar" para obtener las últimas noticias analizadas.</p></div>
     </section>
 
   </main>
@@ -686,10 +719,10 @@ function renderSpotCard(s) {
   // Proyecciones — color según dirección
   const projColor = (p) => p >= cur ? 'var(--green)' : 'var(--red)';
 
-  const reg = s.regression || {};
-  const st = reg.shortTerm || [];   // 3,5,7 días
-  const mt = reg.mediumTerm || [];  // 7,14,30 días
-  const lt = reg.longTerm || [];    // 30,60,90 días
+  const proj = s.projections || {};
+  const st = proj.short  || [];   // 7,14,21 días
+  const mt = proj.medium || [];   // 30,60,90 días
+  const lt = proj.long   || [];   // 90,180,365 días
 
   const fib = s.fibonacci || {};
   const sup = s.supports || [];
@@ -737,15 +770,15 @@ function renderSpotCard(s) {
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
         <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
           <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Corto plazo</div>
-          ${st.map(p=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div>`).join('')}
+          ${st.map(p=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-top:1px"><span>Rango: ${fmtP(p.lower)}-${fmtP(p.upper)}</span><span>R²:${p.confidence?Number(p.confidence).toFixed(2):'—'}</span></div></div>`).join('')}
         </div>
         <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
           <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Mediano plazo</div>
-          ${mt.map(p=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div>`).join('')}
+          ${mt.map(p=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-top:1px"><span>Rango: ${fmtP(p.lower)}-${fmtP(p.upper)}</span><span>R²:${p.confidence?Number(p.confidence).toFixed(2):'—'}</span></div></div>`).join('')}
         </div>
         <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
           <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Largo plazo</div>
-          ${lt.map(p=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div>`).join('')}
+          ${lt.map(p=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-top:1px"><span>Rango: ${fmtP(p.lower)}-${fmtP(p.upper)}</span><span>R²:${p.confidence?Number(p.confidence).toFixed(2):'—'}</span></div></div>`).join('')}
         </div>
       </div>
       <div style="font-size:9px;color:var(--text-t);margin-top:5px;text-align:center">⚠️ Proyección basada en regresión lineal de tendencia histórica — no garantiza resultados futuros</div>
@@ -799,7 +832,12 @@ function renderSpotCard(s) {
   </div>`;
 }
 function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));const el=document.getElementById(`view-${v}`);if(el)el.classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.getAttribute('data-view')===v))}
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showView(t.getAttribute('data-view'))));
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  const v=t.getAttribute('data-view');
+  showView(v);
+  if(v==='signals'&&db.operations.length)loadSignals();
+  if(v==='news'&&document.getElementById('news-list').textContent.includes('click'))loadNews();
+}));
 
 // ── CLOSE MONTH MODAL ──
 document.getElementById('close-month-btn').addEventListener('click',()=>document.getElementById('modal').classList.add('open'));
