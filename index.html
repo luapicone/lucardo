@@ -119,6 +119,16 @@ td.empty-state{text-align:center;padding:20px}
 .btn-confirm{padding:8px 16px;border:none;border-radius:8px;background:var(--green);color:#000;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)}
 
 /* NEWS */
+.news-filter{padding:5px 12px;border-radius:99px;font-size:11px;border:1px solid var(--border-md);background:transparent;color:var(--text-s);cursor:pointer;font-family:var(--sans);transition:.15s}
+.news-filter:hover{background:var(--bg-hover);color:var(--text)}
+.news-filter.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.news-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:4px}
+.news-summary-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px}
+.nsc-market{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:6px}
+.nsc-bar{height:6px;border-radius:3px;margin:4px 0}
+.nsc-label{font-size:11px;font-weight:500}
+.nsc-count{font-size:10px;color:var(--text-t);margin-top:2px}
+
 .news-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:10px}
 .news-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px}
 .news-title{font-size:13px;font-weight:500;color:var(--text);line-height:1.4;flex:1}
@@ -344,6 +354,16 @@ td.empty-state{text-align:center;padding:20px}
           Actualizar
         </button>
       </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="news-filters">
+        <button class="news-filter active" data-filter="all">Todos</button>
+        <button class="news-filter" data-filter="acciones">Bolsa</button>
+        <button class="news-filter" data-filter="crypto">Cripto</button>
+        <button class="news-filter" data-filter="bonos">Bonos</button>
+        <button class="news-filter" data-filter="commodities">Commodities</button>
+        <button class="news-filter" data-filter="latam">Latam</button>
+        <button class="news-filter" data-filter="forex">Forex</button>
+      </div>
+      <div id="news-summary" style="display:none;margin-bottom:14px"></div>
       <div id="news-list"><p class="empty-state">Hacé click en "Actualizar" para obtener las últimas noticias analizadas.</p></div>
     </section>
 
@@ -577,11 +597,109 @@ document.getElementById('sig-ticker-input').addEventListener('keydown', e => {
 document.getElementById('refresh-signals-btn').addEventListener('click', runSignal);
 
 // ── NEWS ──
+// -- NEWS --
+let allNews = [];
+let activeFilter = 'all';
+
+function renderNewsMarketSummary(news) {
+  const markets = ['acciones','crypto','bonos','commodities','forex','latam'];
+  const labels = {acciones:'Bolsa',crypto:'Cripto',bonos:'Bonos',commodities:'Commodities',forex:'Forex',latam:'Latam'};
+  const el = document.getElementById('news-summary');
+  if(!el) return;
+
+  // Calcula score neto por mercado (-10 a +10)
+  const scores = {};
+  const counts = {};
+  markets.forEach(m => { scores[m] = 0; counts[m] = 0; });
+
+  news.forEach(n => {
+    const mags = n.mercadosAfectados || [];
+    const sign = n.impacto === 'positivo' ? 1 : n.impacto === 'negativo' ? -1 : 0;
+    const mag = (n.magnitud || 5) / 10;
+    mags.forEach(m => {
+      if (scores[m] !== undefined) {
+        scores[m] += sign * mag;
+        counts[m]++;
+      }
+    });
+  });
+
+  // Score global
+  const allScores = Object.values(scores).filter((_, i) => counts[markets[i]] > 0);
+  const globalScore = allScores.length ? allScores.reduce((a,b)=>a+b,0)/allScores.length : 0;
+  const globalColor = globalScore > 0.3 ? '#22c55e' : globalScore < -0.3 ? '#ef4444' : '#eab308';
+  const globalLabel = globalScore > 0.3 ? 'Positivo' : globalScore < -0.3 ? 'Negativo' : 'Mixto';
+  const globalIcon = globalScore > 0.3 ? '📈' : globalScore < -0.3 ? '📉' : '↔️';
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s)">Resumen de impacto en mercados</div>
+        <div style="font-size:13px;font-weight:500;color:${globalColor}">${globalIcon} Sentimiento general: ${globalLabel}</div>
+      </div>
+      <div class="news-summary-grid">
+        ${markets.filter(m => counts[m] > 0).map(m => {
+          const s = scores[m];
+          const pct = Math.min(Math.abs(s) * 100, 100);
+          const color = s > 0.2 ? '#22c55e' : s < -0.2 ? '#ef4444' : '#eab308';
+          const label = s > 0.2 ? 'Positivo' : s < -0.2 ? 'Negativo' : 'Mixto';
+          const icon = s > 0.2 ? '+' : s < -0.2 ? '-' : '~';
+          return `<div class="news-summary-card">
+            <div class="nsc-market">${labels[m]}</div>
+            <div style="height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden;margin:5px 0">
+              <div style="width:${pct}%;height:100%;background:${color};border-radius:3px"></div>
+            </div>
+            <div class="nsc-label" style="color:${color}">${icon} ${label}</div>
+            <div class="nsc-count">${counts[m]} noticia${counts[m]>1?'s':''}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderNewsList(news, filter) {
+  const el = document.getElementById('news-list');
+  if (!el) return;
+  const filtered = filter === 'all' ? news : news.filter(n => (n.mercadosAfectados||[]).includes(filter));
+  if (!filtered.length) {
+    el.innerHTML = '<p class="empty-state">No hay noticias para este mercado.</p>';
+    return;
+  }
+  const lastFetch = window._newsFetchedAt || '';
+  el.innerHTML = filtered.map(n => {
+    const ic = n.impacto==='positivo'?'#22c55e':n.impacto==='negativo'?'#ef4444':n.impacto==='mixto'?'#eab308':'#818a94';
+    const bg = n.impacto==='positivo'?'rgba(34,197,94,0.1)':n.impacto==='negativo'?'rgba(239,68,68,0.1)':n.impacto==='mixto'?'rgba(234,179,8,0.1)':'rgba(129,138,148,0.08)';
+    const ii = n.impacto==='positivo'?'positivo':n.impacto==='negativo'?'negativo':n.impacto==='mixto'?'mixto':'neutro';
+    const hl = n.horizonte==='inmediato'?'Inmediato':n.horizonte==='corto'?'Corto plazo':'Mediano plazo';
+    const mp = Math.min(((n.magnitud||1)/10)*100,100);
+    const mc = (n.magnitud||0)>=7?'var(--red)':(n.magnitud||0)>=4?'var(--amber)':'var(--green)';
+    return `<div class="news-card" data-markets="${(n.mercadosAfectados||[]).join(',')}">
+      <div class="news-header">
+        <div class="news-title">${esc(n.titulo||'')}</div>
+        <div class="impact-badge" style="color:${ic};border-color:${ic};background:${bg}">${ii.charAt(0).toUpperCase()+ii.slice(1)}</div>
+      </div>
+      <div class="news-meta"><span class="news-source">${esc(n.fuente||'')}</span><span class="news-horizon">${hl}</span></div>
+      <div class="news-summary">${esc(n.resumen||'')}</div>
+      ${n.activos?.length?`<div class="news-assets">${n.activos.map(a=>`<span class="asset-tag" style="color:${ic};border-color:${ic};background:${bg}">${esc(a)}</span>`).join('')}</div>`:''}
+      ${n.mercadosAfectados?.length?`<div class="news-markets">${n.mercadosAfectados.map(m=>`<span class="market-tag">${esc(m)}</span>`).join('')}</div>`:''}
+      <div class="magnitude-bar">
+        <span class="mag-label">Impacto</span>
+        <div class="mag-track"><div class="mag-fill" style="width:${mp}%;background:${mc}"></div></div>
+        <span class="mag-val">${n.magnitud||'?'}/10</span>
+      </div>
+    </div>`;
+  }).join('') + `<div style="font-size:10px;color:var(--text-t);text-align:center;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:var(--r)">
+    Analisis generado por IA. No es asesoramiento financiero.${lastFetch?' Actualizado: '+lastFetch:''}</div>`;
+}
+
 async function loadNews() {
   const el = document.getElementById('news-list');
   const btn = document.getElementById('refresh-news-btn');
+  const sumEl = document.getElementById('news-summary');
   if (!el || !btn) return;
-  el.innerHTML = '<div class="signal-loading">Obteniendo y analizando noticias con IA...</div>';
+  el.innerHTML = '<div class="signal-loading">Obteniendo y analizando noticias...</div>';
+  if (sumEl) sumEl.style.display = 'none';
   btn.disabled = true; btn.classList.add('spinning');
   try {
     const r = await fetch('/api/news');
@@ -591,39 +709,28 @@ async function loadNews() {
       el.innerHTML = `<p class="empty-state" style="color:var(--red)">${esc(d.error)}</p>`; return;
     }
     if (!d.news || !d.news.length) {
-      el.innerHTML = '<p class="empty-state">No se pudieron obtener noticias. Intentá de nuevo.</p>'; return;
+      el.innerHTML = '<p class="empty-state">No se pudieron obtener noticias. Intenta de nuevo.</p>'; return;
     }
-    const ft = d.fetchedAt ? new Date(d.fetchedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
-    el.innerHTML = d.news.map(n => {
-      const ic = n.impacto==='positivo'?'#22c55e':n.impacto==='negativo'?'#ef4444':n.impacto==='mixto'?'#eab308':'#818a94';
-      const bg = n.impacto==='positivo'?'rgba(34,197,94,0.1)':n.impacto==='negativo'?'rgba(239,68,68,0.1)':n.impacto==='mixto'?'rgba(234,179,8,0.1)':'rgba(129,138,148,0.08)';
-      const ii = n.impacto==='positivo'?'📈':n.impacto==='negativo'?'📉':n.impacto==='mixto'?'↔️':'➡️';
-      const hl = n.horizonte==='inmediato'?'⚡ Inmediato':n.horizonte==='corto'?'⏱ Corto plazo':'📅 Mediano plazo';
-      const mp = Math.min(((n.magnitud||1)/10)*100,100);
-      const mc = (n.magnitud||0)>=7?'var(--red)':(n.magnitud||0)>=4?'var(--amber)':'var(--green)';
-      return `<div class="news-card">
-        <div class="news-header">
-          <div class="news-title">${esc(n.titulo||'')}</div>
-          <div class="impact-badge" style="color:${ic};border-color:${ic};background:${bg}">${ii} ${(n.impacto||'').charAt(0).toUpperCase()+(n.impacto||'').slice(1)}</div>
-        </div>
-        <div class="news-meta"><span class="news-source">📰 ${esc(n.fuente||'')}</span><span class="news-horizon">${hl}</span></div>
-        <div class="news-summary">${esc(n.resumen||'')}</div>
-        ${n.activos?.length?`<div class="news-assets">${n.activos.map(a=>`<span class="asset-tag" style="color:${ic};border-color:${ic};background:${bg}">${esc(a)}</span>`).join('')}</div>`:''}
-        ${n.mercadosAfectados?.length?`<div class="news-markets">${n.mercadosAfectados.map(m=>`<span class="market-tag">${esc(m)}</span>`).join('')}</div>`:''}
-        <div class="magnitude-bar">
-          <span class="mag-label">Impacto</span>
-          <div class="mag-track"><div class="mag-fill" style="width:${mp}%;background:${mc}"></div></div>
-          <span class="mag-val">${n.magnitud||'?'}/10</span>
-        </div>
-      </div>`;
-    }).join('') + `<div style="font-size:10px;color:var(--text-t);text-align:center;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:var(--r)">
-      ⚠️ Análisis generado por IA. No es asesoramiento financiero.${ft?' · Actualizado: '+ft:''}</div>`;
+    allNews = d.news;
+    window._newsFetchedAt = d.fetchedAt ? new Date(d.fetchedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+    renderNewsMarketSummary(allNews);
+    renderNewsList(allNews, activeFilter);
   } catch(err) {
     btn.disabled = false; btn.classList.remove('spinning');
     el.innerHTML = `<p class="empty-state" style="color:var(--red)">Error: ${err.message}</p>`;
   }
 }
+
 document.getElementById('refresh-news-btn').addEventListener('click', loadNews);
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.news-filter');
+  if (!btn) return;
+  document.querySelectorAll('.news-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = btn.getAttribute('data-filter');
+  if (allNews.length) renderNewsList(allNews, activeFilter);
+});
 
 async function runSignal() {
   const ticker = document.getElementById('sig-ticker-input').value.trim().toUpperCase();
