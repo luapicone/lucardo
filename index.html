@@ -147,6 +147,20 @@ td.empty-state{text-align:center;padding:20px}
 .mag-fill{height:100%;border-radius:2px}
 .mag-val{font-family:var(--mono);font-size:11px;color:var(--text-s);width:20px;text-align:right}
 /* SIGNALS */
+.action-box{border-radius:var(--rl);padding:14px;margin-bottom:12px;border:1px solid}
+.action-title{font-size:18px;font-weight:600;margin-bottom:6px}
+.action-subtitle{font-size:11px;color:var(--text-t);margin-bottom:10px}
+.action-reasons{list-style:none;display:flex;flex-direction:column;gap:5px}
+.action-reasons li{font-size:12px;color:var(--text-s);padding-left:14px;position:relative;line-height:1.5}
+.action-reasons li::before{content:'›';position:absolute;left:0;color:inherit}
+.scenario-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.scenario-card{background:var(--bg-card);border-radius:var(--r);padding:12px;border:1px solid var(--border)}
+.scenario-label{font-size:11px;font-weight:500;margin-bottom:4px}
+.scenario-condition{font-size:10px;color:var(--text-t);margin-bottom:8px;font-style:italic;line-height:1.4}
+.scenario-prob{font-size:10px;padding:2px 7px;border-radius:99px;display:inline-block;margin-bottom:8px}
+.scenario-explain{font-size:11px;color:var(--text-s);line-height:1.5}
+.scenario-explain li{padding-left:12px;position:relative;margin-bottom:3px}
+.scenario-explain li::before{content:'·';position:absolute;left:0}
 .sig-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl)}
 .mode-toggle{display:flex;gap:3px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:3px}
 .mode-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-family:var(--sans);cursor:pointer;border:none;background:transparent;color:var(--text-s);transition:.15s;white-space:nowrap}
@@ -916,6 +930,30 @@ function renderSpotCard(s) {
         <div class="signal-meta-value" style="color:${s.volRatio > 1.5 ? 'var(--amber)' : 'var(--text)'}">${s.volRatio ? Number(s.volRatio).toFixed(1)+'x' : '—'}</div>
       </div>
     </div>
+
+    <!-- Acción recomendada -->
+    ${s.action ? `<div class="action-box" style="background:${s.action.actionColor}18;border-color:${s.action.actionColor}55">
+      <div class="action-title" style="color:${s.action.actionColor}">${s.action.actionIcon} ${s.action.action}</div>
+      <div class="action-subtitle">Recomendación basada en análisis técnico</div>
+      <ul class="action-reasons" style="color:${s.action.actionColor}cc">
+        ${(s.action.reasons||[]).map(r=>`<li>${esc(r)}</li>`).join('')}
+      </ul>
+    </div>` : ''}
+
+    <!-- Escenarios -->
+    ${s.scenarios ? `<div style="margin-bottom:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">🎯 Escenarios posibles</div>
+      <div class="scenario-grid">
+        ${(s.scenarios||[]).map(sc=>`<div class="scenario-card" style="border-color:${sc.color}33">
+          <div class="scenario-label" style="color:${sc.color}">${sc.icon} ${sc.label}</div>
+          <div class="scenario-condition">${esc(sc.condition)}</div>
+          <span class="scenario-prob" style="background:${sc.color}22;color:${sc.color}">${esc(sc.probability)}</span>
+          <ul class="scenario-explain" style="list-style:none">
+            ${(sc.explain||[]).map(e=>`<li>${esc(e)}</li>`).join('')}
+          </ul>
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
 
     <!-- Proyección de precios (ATR + volatilidad histórica) -->
     <div style="margin-bottom:12px">

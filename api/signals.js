@@ -479,6 +479,12 @@ async function analyzeSpot(sym) {
   else if(score>=-3){verdict='Venta';verdictColor='#fca5a5';verdictIcon='🔽';}
   else{verdict='Venta fuerte';verdictColor='#ef4444';verdictIcon='🔴';}
 
+  // ── ACCIÓN RECOMENDADA + EXPLICACIÓN ──
+  const action=buildAction(score,stage,rsiCur,distFromHigh,distFromLow,e20,e50,e200,cur,volRatio);
+
+  // ── EXPLICACIÓN DE ESCENARIOS ──
+  const scenarios=buildScenarios(cur,projections,sr,fib,e50,e200,stage,score);
+
   return{
     ticker:sym,mode:'spot',currentPrice:cur,verdict,verdictColor,verdictIcon,score,
     stage:stageName,ma30,
@@ -487,8 +493,101 @@ async function analyzeSpot(sym) {
     high52w,low52w,distFromHigh,distFromLow,
     fibonacci:fib,nearFibLevels:nearFib,
     supports:sr.supports,resistances:sr.resistances,
-    projections,
+    projections,action,scenarios,
     signals,
     analyzedAt:new Date().toISOString(),barsCount:n,
   };
+}
+
+function buildAction(score,stage,rsi,distHigh,distLow,e20,e50,e200,cur,volRatio){
+  // Acción principal
+  let action,actionColor,actionIcon,reasons=[];
+
+  if(stage===2&&score>=2){
+    action='ACUMULAR';actionColor='#22c55e';actionIcon='🟢';
+    reasons.push('Weinstein Stage 2 confirmado: MA30 subiendo con precio arriba — contexto ideal de compra');
+    if(e20&&e50&&e200&&cur>e20&&e20>e50)reasons.push('Alineación de EMAs alcista: precio > EMA20 > EMA50');
+    if(rsi&&rsi<65&&rsi>45)reasons.push('RSI en zona saludable ('+rsi.toFixed(1)+') sin sobrecompra — hay momentum sin agotamiento');
+    if(volRatio>1.3)reasons.push('Volumen por encima del promedio confirma el movimiento');
+  } else if(stage===2&&score>=0){
+    action='MANTENER';actionColor='#86efac';actionIcon='🔼';
+    reasons.push('Stage 2 activo pero señales mixtas — mejor esperar confirmación antes de agregar');
+    if(rsi&&rsi>65)reasons.push('RSI ('+rsi.toFixed(1)+') en zona de sobrecompra, posible pausa o corrección corta');
+    reasons.push('Mantener posición existente con stop bajo MA30');
+  } else if(stage===1&&score>=-1){
+    action='ESPERAR';actionColor='#eab308';actionIcon='⏳';
+    reasons.push('Stage 1 de Weinstein: zona de base/acumulación — aún no hay confirmación de tendencia alcista');
+    reasons.push('Esperar ruptura del rango con volumen >1.5x el promedio para confirmar Stage 2');
+    if(distLow<10)reasons.push('Cerca del mínimo anual: riesgo/recompensa favorable si hay catalizador');
+  } else if(stage===3||score<0){
+    action='REDUCIR';actionColor='#fca5a5';actionIcon='🔽';
+    reasons.push(stage===3?'Stage 3 de Weinstein: distribución en marcha — MA30 aplanando':'Señales técnicas predominantemente bajistas');
+    if(e50&&cur<e50)reasons.push('Precio por debajo de EMA50 — pérdida de soporte clave');
+    if(rsi&&rsi>70)reasons.push('RSI ('+rsi.toFixed(1)+') en sobrecompra extrema en contexto bajista');
+    reasons.push('Reducir exposición gradualmente, no vender todo de golpe');
+  } else if(stage===4||score<=-3){
+    action='SALIR';actionColor='#ef4444';actionIcon='🔴';
+    reasons.push('Stage 4 de Weinstein: tendencia bajista confirmada — MA30 bajando con precio abajo');
+    if(e50&&e200&&cur<e50&&cur<e200)reasons.push('Precio bajo EMA50 y EMA200: tendencia bajista estructural');
+    reasons.push('Salir de posiciones largas. No comprar el rebote sin confirmación técnica clara');
+  } else {
+    action='NEUTRAL';actionColor='#eab308';actionIcon='⚖️';
+    reasons.push('Señales técnicas mixtas sin dirección clara');
+    reasons.push('Esperar mayor definición del mercado antes de tomar posición');
+  }
+
+  return{action,actionColor,actionIcon,reasons};
+}
+
+function buildScenarios(cur,proj,sr,fib,e50,e200,stage,score){
+  const scenarios=[];
+  const sh=proj.short||[], md=proj.medium||[], lg=proj.long||[];
+
+  // Escenario alcista
+  const bullTarget=sh.length?sh[sh.length-1].upper:null;
+  const res1=sr.resistances[0];
+  const bullExplain=[];
+  if(stage===2)bullExplain.push('Stage 2 activo facilita continuación alcista');
+  if(res1)bullExplain.push('Primera resistencia en $'+res1.price+' ('+res1.touches+' contactos previos)');
+  if(bullTarget)bullExplain.push('Rango de volatilidad alcista a 1 mes: hasta $'+bullTarget);
+  const fibTarget=fib.r_236;
+  if(fibTarget>cur)bullExplain.push('Fibonacci 23.6% en $'+fibTarget+' como primer objetivo técnico');
+  scenarios.push({
+    label:'Escenario alcista',icon:'📈',color:'#22c55e',
+    condition:'Si el precio mantiene soporte y aumenta el volumen comprador',
+    targets:bullTarget?['$'+bullTarget]:['Ver resistencias arriba'],
+    explain:bullExplain,
+    probability:score>=3?'Alta (score '+score+')':score>=0?'Media':'Baja',
+  });
+
+  // Escenario base
+  const baseExplain=[];
+  if(e50)baseExplain.push('EMA50 en $'+e50.toFixed(2)+' actúa como zona de equilibrio');
+  if(md.length)baseExplain.push('Rango esperado a 2 meses: $'+md[0].lower+' – $'+md[0].upper);
+  baseExplain.push('Sin catalizador claro, el precio tiende a oscilar entre soporte y resistencia más cercanos');
+  scenarios.push({
+    label:'Escenario base',icon:'↔️',color:'#eab308',
+    condition:'Consolidación lateral sin breakout en ninguna dirección',
+    targets:e50?['Soporte: $'+e50.toFixed(2),'EMA50 como imán central']:['Ver EMAs'],
+    explain:baseExplain,
+    probability:'Siempre posible en mercados laterales',
+  });
+
+  // Escenario bajista
+  const sup1=sr.supports[0];
+  const bearExplain=[];
+  if(stage===4||stage===3)bearExplain.push(stage===4?'Stage 4 confirma presión bajista estructural':'Stage 3 indica distribución activa');
+  if(sup1)bearExplain.push('Soporte clave en $'+sup1.price+' — si rompe con volumen puede acelerar la caída');
+  const bearTarget=sh.length?sh[sh.length-1].lower:null;
+  if(bearTarget)bearExplain.push('Rango bajista a 1 mes: hasta $'+bearTarget);
+  if(e200&&cur<e200)bearExplain.push('Precio bajo EMA200: la media de largo plazo actúa como resistencia');
+  scenarios.push({
+    label:'Escenario bajista',icon:'📉',color:'#ef4444',
+    condition:'Si el precio rompe el soporte más cercano con volumen alto',
+    targets:sup1?['$'+sup1.price]:['Ver soportes abajo'],
+    explain:bearExplain,
+    probability:score<=-3?'Alta (score '+score+')':score<0?'Media':'Baja',
+  });
+
+  return scenarios;
 }
