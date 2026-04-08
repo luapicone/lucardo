@@ -1,11 +1,7 @@
 /**
- * api/news.js — v4 REAL-TIME
- * Obtiene noticias REALES del día usando múltiples fuentes:
- * 1. MarketWatch RSS (tiempo real, sin key)
- * 2. CNBC RSS (tiempo real, sin key)  
- * 3. Cryptopanic RSS para crypto (sin key)
- * 4. Reuters RSS (sin key)
- * Luego Claude analiza las noticias reales y da el impacto.
+ * api/news.js — v5
+ * Noticias financieras reales del día via RSS + análisis de Claude Haiku
+ * Devuelve 10+ noticias con fecha, fuente e impacto
  */
 
 module.exports = async function handler(req, res) {
@@ -18,31 +14,24 @@ module.exports = async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY no configurada.', news: [] });
 
   try {
-    // Fetch real news from multiple RSS sources in parallel
     const rawArticles = await fetchAllNews();
-    
-    if (!rawArticles.length) {
-      return res.status(200).json({ error: 'No se pudieron obtener noticias en este momento.', news: [] });
-    }
-
-    // Ask Claude to analyze REAL articles
     const today = new Date().toLocaleDateString('es-AR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-    const prompt = `Hoy es ${today}. Analizá estas noticias REALES obtenidas ahora mismo de fuentes financieras:
 
-${rawArticles.map((a,i) => `${i+1}. [${a.source}] ${a.title}${a.description ? '\n   ' + a.description.slice(0,150) : ''}`).join('\n\n')}
+    const prompt = `Hoy es ${today}. Analizá estas noticias financieras REALES obtenidas en este momento:
 
-Para cada noticia relevante para inversores, analizá su impacto real en mercados. Seleccioná las 6 más importantes.
+${rawArticles.map((a,i) => `${i+1}. [${a.source}] [${a.dateStr}] ${a.title}${a.description ? ' — ' + a.description.slice(0,120) : ''}`).join('\n')}
 
-Respondé ÚNICAMENTE con JSON array válido (sin markdown):
+Seleccioná las 10 más relevantes para inversores y analizá su impacto real. Respondé ÚNICAMENTE con JSON array (sin markdown):
 [
   {
-    "titulo": "título en español conciso (máx 90 chars)",
-    "fuente": "nombre de la fuente real",
+    "titulo": "título conciso en español (máx 90 chars)",
+    "fuente": "nombre de la fuente",
+    "fecha": "fecha en español (ej: hoy, ayer, 8 de abril)",
     "impacto": "positivo|negativo|mixto|neutro",
     "magnitud": 1-10,
     "mercadosAfectados": ["acciones","crypto","bonos","commodities","forex","latam"],
-    "resumen": "Dos oraciones: qué dice la noticia y qué impacto concreto esperás en precios.",
-    "activos": ["ticker1","ticker2"],
+    "resumen": "Dos oraciones: qué ocurrió y qué impacto concreto se espera en precios.",
+    "activos": ["BTC","S&P500","ORO","USD"],
     "horizonte": "inmediato|corto|mediano"
   }
 ]`;
@@ -59,7 +48,7 @@ Respondé ÚNICAMENTE con JSON array válido (sin markdown):
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2500,
+        max_tokens: 3000,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: ctrl.signal,
@@ -68,7 +57,7 @@ Respondé ÚNICAMENTE con JSON array válido (sin markdown):
 
     if (!resp.ok) {
       const err = await resp.text();
-      return res.status(200).json({ error: `Claude error ${resp.status}`, news: [], raw: err.slice(0,200) });
+      return res.status(200).json({ error: 'Claude error ' + resp.status, news: [], raw: err.slice(0,200) });
     }
 
     const data = await resp.json();
@@ -81,7 +70,7 @@ Respondé ÚNICAMENTE con JSON array válido (sin markdown):
     return res.status(200).json({
       news,
       fetchedAt: new Date().toISOString(),
-      sources: rawArticles.length,
+      sourceCount: rawArticles.length,
     });
 
   } catch (err) {
@@ -90,31 +79,23 @@ Respondé ÚNICAMENTE con JSON array válido (sin markdown):
   }
 };
 
-// ── RSS FETCH ─────────────────────────────────────────────────────────────
-
 async function fetchAllNews() {
   const feeds = [
-    // MarketWatch - mercado en general
-    { url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories', source: 'MarketWatch' },
-    { url: 'https://feeds.content.dowjones.io/public/rss/mw_marketpulse', source: 'MarketWatch' },
-    // CNBC
-    { url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html', source: 'CNBC' },
-    { url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html', source: 'CNBC Markets' },
-    // Reuters Business
-    { url: 'https://feeds.reuters.com/reuters/businessNews', source: 'Reuters' },
-    { url: 'https://feeds.reuters.com/reuters/UKbusinessNews', source: 'Reuters' },
-    // CryptoPanic - crypto news
-    { url: 'https://cryptopanic.com/news/rss/', source: 'CryptoPanic' },
-    // Yahoo Finance
-    { url: 'https://finance.yahoo.com/news/rssindex', source: 'Yahoo Finance' },
-    // Investing.com
-    { url: 'https://www.investing.com/rss/news_25.rss', source: 'Investing.com Stocks' },
-    { url: 'https://www.investing.com/rss/news_301.rss', source: 'Investing.com Crypto' },
+    { url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories',    source: 'MarketWatch' },
+    { url: 'https://feeds.content.dowjones.io/public/rss/mw_marketpulse',   source: 'MarketWatch' },
+    { url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html',          source: 'CNBC' },
+    { url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html',           source: 'CNBC Markets' },
+    { url: 'https://feeds.reuters.com/reuters/businessNews',                  source: 'Reuters' },
+    { url: 'https://cryptopanic.com/news/rss/',                               source: 'CryptoPanic' },
+    { url: 'https://finance.yahoo.com/news/rssindex',                         source: 'Yahoo Finance' },
+    { url: 'https://www.investing.com/rss/news_25.rss',                       source: 'Investing.com' },
+    { url: 'https://www.investing.com/rss/news_301.rss',                      source: 'Investing.com Crypto' },
+    { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',                 source: 'CoinDesk' },
+    { url: 'https://cointelegraph.com/rss',                                   source: 'CoinTelegraph' },
+    { url: 'https://seekingalpha.com/market_currents.xml',                    source: 'Seeking Alpha' },
   ];
 
-  const results = await Promise.allSettled(
-    feeds.map(f => fetchRSS(f.url, f.source))
-  );
+  const results = await Promise.allSettled(feeds.map(f => fetchRSS(f.url, f.source)));
 
   const articles = [];
   const seenTitles = new Set();
@@ -122,8 +103,7 @@ async function fetchAllNews() {
   for (const r of results) {
     if (r.status !== 'fulfilled') continue;
     for (const a of r.value) {
-      // Deduplicar por título similar
-      const key = a.title.toLowerCase().slice(0, 50);
+      const key = a.title.toLowerCase().slice(0, 60);
       if (!seenTitles.has(key) && a.title.length > 15) {
         seenTitles.add(key);
         articles.push(a);
@@ -131,54 +111,66 @@ async function fetchAllNews() {
     }
   }
 
-  // Ordenar por más recientes y tomar top 15
-  return articles.slice(0, 15);
+  // Sort: articles with dates first (most recent first)
+  articles.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return articles.slice(0, 20);
 }
 
 async function fetchRSS(url, source) {
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4000);
+    setTimeout(() => ctrl.abort(), 5000);
     const r = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; FinTrack/1.0; +https://lucardo-cyan.vercel.app)',
+        'User-Agent': 'Mozilla/5.0 (compatible; FinTrack/1.0)',
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       },
       signal: ctrl.signal,
     });
-    clearTimeout(timer);
     if (!r.ok) return [];
-
     const text = await r.text();
     const articles = [];
+    const items = text.match(/<item[\s\S]*?<\/item>/g) || text.match(/<entry[\s\S]*?<\/entry>/g) || [];
 
-    // Parse items from RSS/Atom
-    const items = text.match(/<item[\s>]([\s\S]*?)<\/item>/g) || 
-                  text.match(/<entry[\s>]([\s\S]*?)<\/entry>/g) || [];
-
-    for (const item of items.slice(0, 5)) {
-      const title = stripHTML(
-        item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/)?.[1] ||
+    for (const item of items.slice(0, 7)) {
+      const title = strip(
+        item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]>/)?.[1] ||
         item.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] || ''
       ).trim();
 
-      const description = stripHTML(
-        item.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
+      const description = strip(
+        item.match(/<description><!\[CDATA\[([\s\S]*?)\]\]>/)?.[1] ||
         item.match(/<description[^>]*>([\s\S]*?)<\/description>/)?.[1] ||
         item.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] || ''
       ).trim().slice(0, 200);
 
-      const pubDate = item.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/)?.[1] ||
-                      item.match(/<published[^>]*>([\s\S]*?)<\/published>/)?.[1] || '';
+      const pubDateRaw =
+        item.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/)?.[1] ||
+        item.match(/<published[^>]*>([\s\S]*?)<\/published>/)?.[1] ||
+        item.match(/<updated[^>]*>([\s\S]*?)<\/updated>/)?.[1] || '';
+
+      let timestamp = 0, dateStr = 'hoy';
+      if (pubDateRaw) {
+        const d = new Date(pubDateRaw.trim());
+        if (!isNaN(d.getTime())) {
+          timestamp = d.getTime();
+          const now = Date.now();
+          const diffH = (now - timestamp) / 3600000;
+          if (diffH < 1) dateStr = 'hace menos de 1 hora';
+          else if (diffH < 24) dateStr = 'hace ' + Math.floor(diffH) + 'h';
+          else if (diffH < 48) dateStr = 'ayer';
+          else dateStr = d.toLocaleDateString('es-AR', { day:'numeric', month:'long' });
+        }
+      }
 
       if (title && title.length > 10 && title.length < 300) {
-        articles.push({ title, description, source, pubDate });
+        articles.push({ title, description, source, dateStr, timestamp });
       }
     }
     return articles;
   } catch { return []; }
 }
 
-function stripHTML(str) {
-  return (str || '').replace(/<[^>]*>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/\s+/g,' ');
+function strip(s) {
+  return (s||'').replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/\s+/g,' ');
 }
