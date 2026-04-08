@@ -647,235 +647,220 @@ function renderSpotCard(s) {
   const cur = s.currentPrice;
   const chgColor = s.changePercent >= 0 ? 'var(--green)' : 'var(--red)';
   const chgSign  = s.changePercent >= 0 ? '+' : '';
-
-  // Verdict colors
   const vbg = s.totalScore >= 8  ? 'rgba(34,197,94,0.15)'   :
               s.totalScore >= 5  ? 'rgba(134,239,172,0.12)' :
               s.totalScore >= 2  ? 'rgba(167,243,208,0.1)'  :
               s.totalScore >= -1 ? 'rgba(234,179,8,0.12)'   :
               s.totalScore >= -4 ? 'rgba(252,165,165,0.12)' :
                                    'rgba(239,68,68,0.15)';
-
-  // Group signals by category
-  const grouped = {};
-  (s.signals||[]).forEach(sig => {
-    if (!grouped[sig.category]) grouped[sig.category] = [];
-    grouped[sig.category].push(sig);
-  });
-
-  const catColors = {
-    'Weinstein':'#a855f7','Cruce EMAs':'#3b82f6','EMAs':'#3b82f6',
-    'MACD':'#f97316','RSI':'#22c55e','Bollinger':'#eab308',
-    'OBV':'#14b8a6','Estocástico':'#ec4899','Volumen':'#6366f1','Fibonacci':'#8b5cf6'
-  };
-
-  const action = s.action || {};
-  const targets = s.targets || {};
+  const action    = s.action    || {};
+  const targets   = s.targets   || {};
   const scenarios = s.scenarios || [];
+  const fib       = s.fibonacci || {};
+  const grouped   = {};
+  (s.signals||[]).forEach(function(sig){ if(!grouped[sig.category])grouped[sig.category]=[]; grouped[sig.category].push(sig); });
+  const catColors = {'Weinstein':'#a855f7','Cruce EMAs':'#3b82f6','EMAs':'#3b82f6','MACD':'#f97316','RSI':'#22c55e','Bollinger':'#eab308','OBV':'#14b8a6','Estocástico':'#ec4899','Volumen':'#6366f1','Fibonacci':'#8b5cf6'};
+  const obvIcon  = ind.obvTrend==='rising'?'↑':ind.obvTrend==='falling'?'↓':'→';
+  const obvColor = ind.obvTrend==='rising'?'var(--green)':ind.obvTrend==='falling'?'var(--red)':'var(--text-s)';
 
-  // OBV display
-  const obvIcon = ind.obvTrend === 'rising' ? '↑' : ind.obvTrend === 'falling' ? '↓' : '→';
-  const obvColor = ind.obvTrend === 'rising' ? 'var(--green)' : ind.obvTrend === 'falling' ? 'var(--red)' : 'var(--text-s)';
+  let html = '';
 
-  return `
-<div class="signal-card spot-card" style="border-color:${s.verdictColor}33">
+  // ── CARD OPEN ──
+  html += '<div class="signal-card spot-card" style="border-color:' + s.verdictColor + '33">';
 
-  <!-- Header -->
-  <div class="signal-card-header">
-    <div class="signal-asset">
-      <span class="ticker-chip" style="font-size:14px;padding:5px 12px;background:${s.verdictColor}22;border-color:${s.verdictColor}55;color:${s.verdictColor}">${esc(s.ticker)}</span>
-      <div>
-        <div style="font-size:11px;color:var(--text-t)">${esc(s.assetType==='crypto'?'Criptomoneda':s.assetType==='cedear'?'CEDEAR':s.assetType==='stock'?'Acción / ETF':'')} · ${esc(s.stage)}</div>
-        <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
-          <span style="font-family:var(--mono);font-size:16px;font-weight:600">${fmt6(cur)}</span>
-          <span style="font-size:12px;color:${chgColor}">${chgSign}${s.changePercent}%</span>
-        </div>
-      </div>
-    </div>
-    <div style="text-align:right">
-      <div class="verdict-badge" style="color:${s.verdictColor};border-color:${s.verdictColor};background:${vbg};margin-bottom:6px">${s.verdictIcon} ${s.verdict}</div>
-      <div style="font-size:10px;color:var(--text-t)">Score: <span style="color:${s.totalScore>0?'var(--green)':s.totalScore<0?'var(--red)':'var(--text-s)'};font-weight:500">${s.bullScore > 0 ? '+'+s.bullScore : '0'}↑ / ${s.bearScore > 0 ? s.bearScore+'↓' : '0↓'}</span></div>
-    </div>
-  </div>
+  // ── HEADER ──
+  const assetLabel = s.assetType==='crypto'?'Criptomoneda':s.assetType==='cedear'?'CEDEAR':'Acción / ETF';
+  html += '<div class="signal-card-header">';
+  html += '<div class="signal-asset">';
+  html += '<span class="ticker-chip" style="font-size:14px;padding:5px 12px;background:' + s.verdictColor + '22;border-color:' + s.verdictColor + '55;color:' + s.verdictColor + '">' + esc(s.ticker) + '</span>';
+  html += '<div>';
+  html += '<div style="font-size:11px;color:var(--text-t)">' + esc(assetLabel) + ' · ' + esc(s.stage||'') + '</div>';
+  html += '<div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">';
+  html += '<span style="font-family:var(--mono);font-size:16px;font-weight:600">' + fmt6(cur) + '</span>';
+  html += '<span style="font-size:12px;color:' + chgColor + '">' + chgSign + s.changePercent + '%</span>';
+  html += '</div></div></div>';
+  html += '<div style="text-align:right">';
+  html += '<div class="verdict-badge" style="color:' + s.verdictColor + ';border-color:' + s.verdictColor + ';background:' + vbg + ';margin-bottom:6px">' + s.verdictIcon + ' ' + esc(s.verdict) + '</div>';
+  const scoreColor = s.totalScore > 0 ? 'var(--green)' : s.totalScore < 0 ? 'var(--red)' : 'var(--text-s)';
+  html += '<div style="font-size:10px;color:var(--text-t)">Score: <span style="color:' + scoreColor + ';font-weight:500">+' + (s.bullScore||0) + '↑ / ' + (s.bearScore||0) + '↓</span></div>';
+  html += '</div></div>';
 
-  <!-- Acción recomendada -->
-  ${action.action ? `<div class="action-box" style="background:${action.actionColor}15;border-color:${action.actionColor}55;margin-bottom:12px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <div class="action-title" style="color:${action.actionColor}">${action.actionIcon} ${action.action}</div>
-      ${action.warning ? `<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(234,179,8,0.2);color:var(--amber);border:1px solid rgba(234,179,8,0.4)">${esc(action.warning)}</span>` : ''}
-    </div>
-    <ul class="action-reasons">
-      ${(action.reasons||[]).map(r=>`<li style="color:${action.actionColor}cc">${esc(r)}</li>`).join('')}
-    </ul>
-  </div>` : ''}
+  // ── ACCIÓN ──
+  if (action.action) {
+    html += '<div class="action-box" style="background:' + action.actionColor + '15;border-color:' + action.actionColor + '55;margin-bottom:12px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    html += '<div class="action-title" style="color:' + action.actionColor + '">' + action.actionIcon + ' ' + esc(action.action) + '</div>';
+    if (action.warning) html += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(234,179,8,0.2);color:var(--amber);border:1px solid rgba(234,179,8,0.4)">' + esc(action.warning) + '</span>';
+    html += '</div><ul class="action-reasons">';
+    (action.reasons||[]).forEach(function(r){ html += '<li style="color:' + action.actionColor + 'cc">' + esc(r) + '</li>'; });
+    html += '</ul></div>';
+  }
 
-  <!-- Grid de indicadores -->
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px">
-    ${[
-      ['RSI 14', ind.rsi ? ind.rsi.toFixed(1) : '—', ind.rsi < 30 ? 'var(--green)' : ind.rsi > 70 ? 'var(--red)' : 'var(--text)', ind.rsi < 30 ? 'Sobreventa' : ind.rsi > 70 ? 'Sobrecompra' : ind.rsi > 50 ? 'Fuerza' : 'Debilidad'],
-      ['MACD', ind.macdLine != null ? (ind.macdLine > 0 ? '+' : '')+ind.macdLine.toFixed(3) : '—', ind.macdLine > ind.macdSignal ? 'var(--green)' : 'var(--red)', ind.macdLine > ind.macdSignal ? 'Alcista' : 'Bajista'],
-      ['Estocástico', ind.stochK != null ? ind.stochK.toFixed(1) : '—', ind.stochK < 20 ? 'var(--green)' : ind.stochK > 80 ? 'var(--red)' : 'var(--text)', ind.stochK < 20 ? 'Sobreventa' : ind.stochK > 80 ? 'Sobrecompra' : 'Neutral'],
-      ['BB %', ind.bbPct != null ? (ind.bbPct*100).toFixed(0)+'%' : '—', ind.bbPct > 0.85 ? 'var(--red)' : ind.bbPct < 0.15 ? 'var(--green)' : 'var(--text)', ind.bbPct > 0.85 ? 'Zona alta' : ind.bbPct < 0.15 ? 'Zona baja' : 'Centro'],
-      ['OBV', obvIcon, obvColor, ind.obvTrend==='rising'?'Acumulando':ind.obvTrend==='falling'?'Distribuyendo':'Lateral'],
-    ].map(([l,v,c,sub])=>`
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:9px 8px;text-align:center">
-        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">${l}</div>
-        <div style="font-family:var(--mono);font-size:14px;font-weight:500;color:${c}">${v}</div>
-        <div style="font-size:9px;color:var(--text-t);margin-top:2px">${sub}</div>
-      </div>`).join('')}
-  </div>
+  // ── INDICADORES GRID ──
+  const indItems = [
+    ['RSI 14', ind.rsi!=null?ind.rsi.toFixed(1):'—', ind.rsi<30?'var(--green)':ind.rsi>70?'var(--red)':'var(--text)', ind.rsi<30?'Sobreventa':ind.rsi>70?'Sobrecompra':ind.rsi>50?'Fuerza':'Debilidad'],
+    ['MACD', ind.macdLine!=null?(ind.macdLine>0?'+':'')+ind.macdLine.toFixed(3):'—', ind.macdLine>ind.macdSignal?'var(--green)':'var(--red)', ind.macdLine>ind.macdSignal?'Alcista':'Bajista'],
+    ['Estocástico', ind.stochK!=null?ind.stochK.toFixed(1)+'%':'—', ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text)', ind.stochK<20?'Sobreventa':ind.stochK>80?'Sobrecompra':'Neutral'],
+    ['BB %', ind.bbPct!=null?(ind.bbPct*100).toFixed(0)+'%':'—', ind.bbPct>0.85?'var(--red)':ind.bbPct<0.15?'var(--green)':'var(--text)', ind.bbPct>0.85?'Zona alta':ind.bbPct<0.15?'Zona baja':'Centro'],
+    ['OBV', obvIcon, obvColor, ind.obvTrend==='rising'?'Acumulando':ind.obvTrend==='falling'?'Distribuyendo':'Lateral'],
+  ];
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px">';
+  indItems.forEach(function(it){
+    html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:9px 8px;text-align:center">';
+    html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">' + it[0] + '</div>';
+    html += '<div style="font-family:var(--mono);font-size:14px;font-weight:500;color:' + it[2] + '">' + it[1] + '</div>';
+    html += '<div style="font-size:9px;color:var(--text-t);margin-top:2px">' + it[3] + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
 
-  <!-- EMAs y precio -->
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:10px">Medias móviles</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
-      ${[
-        ['MA 30', ind.ma30,  'Weinstein'],
-        ['EMA 20', ind.ema20, 'Corto'],
-        ['EMA 50', ind.ema50, 'Mediano'],
-        ['EMA 200',ind.ema200,'Largo'],
-      ].map(([l,v,sub])=>{
-        const abv = v && cur > v;
-        return `<div style="text-align:center">
-          <div style="font-size:10px;color:var(--text-t);margin-bottom:3px">${l}</div>
-          <div style="font-family:var(--mono);font-size:12px;color:${v?(abv?'var(--green)':'var(--red)'):'var(--text-t)'}">${fmt6(v)}</div>
-          <div style="font-size:9px;margin-top:2px;color:${v?(abv?'var(--green)':'var(--red)'):'var(--text-t)'}">
-            ${v?(abv?'↑ arriba':'↓ abajo'):'—'} ${sub}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-    ${(s.crossovers?.goldenCross || s.crossovers?.deathCross) ? `
-    <div style="margin-top:10px;padding:6px 10px;border-radius:6px;font-size:11px;${s.crossovers.goldenCross?'background:rgba(34,197,94,0.12);color:var(--green)':'background:rgba(239,68,68,0.12);color:var(--red)'}">
-      ${s.crossovers.goldenCross ? '✨ Golden Cross activo — EMA50 cruzó hacia arriba la EMA200' : '💀 Death Cross activo — EMA50 cruzó hacia abajo la EMA200'}
-    </div>` : ''}
-  </div>
+  // ── EMAs ──
+  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:10px">Medias móviles</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
+  [['MA 30',ind.ma30,'Weinstein'],['EMA 20',ind.ema20,'Corto'],['EMA 50',ind.ema50,'Mediano'],['EMA 200',ind.ema200,'Largo']].forEach(function(em){
+    const abv = em[1] && cur > em[1];
+    const col = em[1] ? (abv ? 'var(--green)' : 'var(--red)') : 'var(--text-t)';
+    html += '<div style="text-align:center"><div style="font-size:10px;color:var(--text-t);margin-bottom:3px">' + em[0] + '</div>';
+    html += '<div style="font-family:var(--mono);font-size:12px;color:' + col + '">' + fmt6(em[1]) + '</div>';
+    html += '<div style="font-size:9px;margin-top:2px;color:' + col + '">' + (em[1]?(abv?'↑ arriba':'↓ abajo'):'—') + ' ' + em[2] + '</div></div>';
+  });
+  html += '</div>';
+  if (s.crossovers && s.crossovers.goldenCross) {
+    html += '<div style="margin-top:10px;padding:6px 10px;border-radius:6px;font-size:11px;background:rgba(34,197,94,0.12);color:var(--green)">✨ Golden Cross activo — EMA50 cruzó hacia arriba la EMA200</div>';
+  } else if (s.crossovers && s.crossovers.deathCross) {
+    html += '<div style="margin-top:10px;padding:6px 10px;border-radius:6px;font-size:11px;background:rgba(239,68,68,0.12);color:var(--red)">💀 Death Cross activo — EMA50 cruzó hacia abajo la EMA200</div>';
+  }
+  html += '</div>';
 
-  <!-- Bollinger Bands -->
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">Bandas de Bollinger (20,2)</div>
-    <div style="position:relative;height:24px;background:linear-gradient(to right,var(--bg-hover),rgba(59,130,246,0.15),var(--bg-hover));border-radius:4px;margin-bottom:6px">
-      ${ind.bbPct != null ? `<div style="position:absolute;top:50%;transform:translate(-50%,-50%);left:${Math.min(Math.max(ind.bbPct*100,2),98)}%;width:8px;height:8px;border-radius:50%;background:${s.verdictColor};box-shadow:0 0 6px ${s.verdictColor}"></div>` : ''}
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)">
-      <span style="color:var(--green)">↓ ${fmt6(ind.bbLower)}</span>
-      <span style="color:var(--text-s)">Med ${fmt6(ind.bbMid)}</span>
-      <span style="color:var(--red)">↑ ${fmt6(ind.bbUpper)}</span>
-    </div>
-    ${ind.bbWidth < 0.05 ? '<div style="margin-top:6px;font-size:11px;color:var(--amber)">⚡ Bollinger Squeeze: bandas comprimidas — se acerca movimiento explosivo</div>' : ''}
-  </div>
+  // ── BOLLINGER ──
+  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">Bandas de Bollinger (20,2)</div>';
+  const pct = ind.bbPct != null ? Math.min(Math.max(ind.bbPct*100,2),98) : 50;
+  html += '<div style="position:relative;height:24px;background:linear-gradient(to right,var(--bg-hover),rgba(59,130,246,0.15),var(--bg-hover));border-radius:4px;margin-bottom:6px">';
+  if (ind.bbPct != null) html += '<div style="position:absolute;top:50%;transform:translate(-50%,-50%);left:' + pct + '%;width:8px;height:8px;border-radius:50%;background:' + s.verdictColor + ';box-shadow:0 0 6px ' + s.verdictColor + '"></div>';
+  html += '</div>';
+  html += '<div style="display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono)">';
+  html += '<span style="color:var(--green)">↓ ' + fmt6(ind.bbLower) + '</span>';
+  html += '<span style="color:var(--text-s)">Med ' + fmt6(ind.bbMid) + '</span>';
+  html += '<span style="color:var(--red)">↑ ' + fmt6(ind.bbUpper) + '</span>';
+  html += '</div>';
+  if (ind.bbWidth < 0.05) html += '<div style="margin-top:6px;font-size:11px;color:var(--amber)">⚡ Bollinger Squeeze — bandas comprimidas, se acerca movimiento explosivo</div>';
+  html += '</div>';
 
-  <!-- Targets y S/R -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">🎯 Targets / Stop Loss</div>
-      ${(targets.upside||[]).slice(0,3).map(t=>`
-        <div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)">
-          <span style="color:var(--green)">▲ ${esc(t.label)}${t.touches?' ('+t.touches+'t)':''}</span>
-          <span style="font-family:var(--mono)">${fmt6(t.price)} <span style="font-size:10px;color:var(--text-t)">${pctStr(t.price,cur)}</span></span>
-        </div>`).join('')}
-      <div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;margin-top:4px;border-top:2px solid rgba(239,68,68,0.3)">
-        <span style="color:var(--red)">🛑 Stop Loss (1.5xATR)</span>
-        <span style="font-family:var(--mono);color:var(--red)">${targets.stopLoss?fmt6(targets.stopLoss.price):'—'} <span style="font-size:10px">${targets.stopLoss?targets.stopLoss.distPct+'%':''}</span></span>
-      </div>
-      ${targets.riskReward ? `<div style="font-size:11px;color:var(--text-t);margin-top:6px;text-align:right">R:R = <span style="color:${targets.riskReward>=2?'var(--green)':targets.riskReward>=1?'var(--amber)':'var(--red)'}">1:${targets.riskReward}</span></div>` : ''}
-    </div>
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">📍 Soporte / Resistencia</div>
-      ${(targets.upside||[]).slice(0,2).map(t=>`
-        <div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0">
-          <span style="color:var(--red)">R ${fmt6(t.price)}</span>
-          <span style="font-size:10px;color:var(--text-t)">${pctStr(t.price,cur)}</span>
-        </div>`).join('')}
-      <div style="border-top:1px dashed var(--border);margin:6px 0;font-size:10px;color:var(--text-t);text-align:center">Precio actual: ${fmt6(cur)}</div>
-      ${(targets.downside||[]).slice(0,2).map(t=>`
-        <div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0">
-          <span style="color:var(--green)">S ${fmt6(t.price)}</span>
-          <span style="font-size:10px;color:var(--text-t)">${pctStr(t.price,cur)}</span>
-        </div>`).join('')}
-      <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text-t)">Máx 52s</span><span style="font-family:var(--mono);color:var(--red)">${fmt6(s.high52w)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px"><span style="color:var(--text-t)">Mín 52s</span><span style="font-family:var(--mono);color:var(--green)">${fmt6(s.low52w)}</span></div>
-      </div>
-    </div>
-  </div>
+  // ── TARGETS + S/R ──
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
+  // Targets
+  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">🎯 Targets / Stop Loss</div>';
+  (targets.upside||[]).slice(0,3).forEach(function(t){
+    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)">';
+    html += '<span style="color:var(--green)">▲ ' + esc(t.label) + (t.touches?' ('+t.touches+'t)':'') + '</span>';
+    html += '<span style="font-family:var(--mono)">' + fmt6(t.price) + ' <span style="font-size:10px;color:var(--text-t)">' + pctStr(t.price,cur) + '</span></span>';
+    html += '</div>';
+  });
+  if (targets.stopLoss) {
+    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;margin-top:4px;border-top:2px solid rgba(239,68,68,0.3)">';
+    html += '<span style="color:var(--red)">🛑 Stop Loss (1.5×ATR)</span>';
+    html += '<span style="font-family:var(--mono);color:var(--red)">' + fmt6(targets.stopLoss.price) + ' <span style="font-size:10px">' + (targets.stopLoss.distPct||'') + '%</span></span>';
+    html += '</div>';
+  }
+  if (targets.riskReward != null) {
+    const rrColor = targets.riskReward >= 2 ? 'var(--green)' : targets.riskReward >= 1 ? 'var(--amber)' : 'var(--red)';
+    html += '<div style="font-size:11px;color:var(--text-t);margin-top:6px;text-align:right">R:R = <span style="color:' + rrColor + '">1:' + targets.riskReward + '</span></div>';
+  }
+  html += '</div>';
+  // S/R
+  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">📍 Soporte / Resistencia</div>';
+  (targets.upside||[]).slice(0,2).forEach(function(t){
+    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--red)">R ' + fmt6(t.price) + '</span><span style="font-size:10px;color:var(--text-t)">' + pctStr(t.price,cur) + '</span></div>';
+  });
+  html += '<div style="border-top:1px dashed var(--border);margin:6px 0;font-size:10px;color:var(--text-t);text-align:center">Precio: ' + fmt6(cur) + '</div>';
+  (targets.downside||[]).slice(0,2).forEach(function(t){
+    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--green)">S ' + fmt6(t.price) + '</span><span style="font-size:10px;color:var(--text-t)">' + pctStr(t.price,cur) + '</span></div>';
+  });
+  html += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">';
+  html += '<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text-t)">Máx 52s</span><span style="font-family:var(--mono);color:var(--red)">' + fmt6(s.high52w) + '</span></div>';
+  html += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px"><span style="color:var(--text-t)">Mín 52s</span><span style="font-family:var(--mono);color:var(--green)">' + fmt6(s.low52w) + '</span></div>';
+  html += '</div></div></div>';
 
-  <!-- Fibonacci -->
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">🌀 Fibonacci Retracements (52 semanas)</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-      ${s.fibonacci ? [
-        ['Ext 161.8%',s.fibonacci.ext_1618],['Máx 100%',s.fibonacci.r_0],
-        ['Ret 23.6%',s.fibonacci.r_236],['Ret 38.2%',s.fibonacci.r_382],
-        ['Ret 50.0%',s.fibonacci.r_500],['Ret 61.8%',s.fibonacci.r_618],
-        ['Ret 78.6%',s.fibonacci.r_786],['Mín 100%',s.fibonacci.r_1000],
-      ].map(([l,v])=>{
-        const isNear = Math.abs(v-cur)/cur < 0.02;
-        const abv = v > cur;
-        return `<div style="padding:5px 6px;border-radius:6px;${isNear?'background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.4)':'border:1px solid var(--border)'}">
-          <div style="font-size:9px;color:var(--text-t)">${l}</div>
-          <div style="font-family:var(--mono);font-size:11px;color:${abv?'var(--red)':'var(--green)'}">${fmt6(v)}</div>
-        </div>`;
-      }).join('') : ''}
-    </div>
-    ${s.nearFibLevels?.length ? `<div style="font-size:11px;color:var(--amber);margin-top:8px">⚠️ Precio cerca del nivel ${esc(s.nearFibLevels[0].l)} — zona de confluencia técnica</div>` : ''}
-  </div>
+  // ── FIBONACCI ──
+  html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">🌀 Fibonacci Retracements (52 semanas)</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">';
+  [['Ext 161.8%',fib.ext_1618],['Máx 100%',fib.r_0],['Ret 23.6%',fib.r_236],['Ret 38.2%',fib.r_382],['Ret 50.0%',fib.r_500],['Ret 61.8%',fib.r_618],['Ret 78.6%',fib.r_786],['Mín 100%',fib.r_1000]].forEach(function(fv){
+    const isNear = fv[1] && Math.abs(fv[1]-cur)/cur < 0.02;
+    const abv = fv[1] > cur;
+    const border = isNear ? 'background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.4)' : 'border:1px solid var(--border)';
+    html += '<div style="padding:5px 6px;border-radius:6px;' + border + '">';
+    html += '<div style="font-size:9px;color:var(--text-t)">' + fv[0] + '</div>';
+    html += '<div style="font-family:var(--mono);font-size:11px;color:' + (abv?'var(--red)':'var(--green)') + '">' + fmt6(fv[1]) + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  if (s.nearFibLevels && s.nearFibLevels.length) {
+    html += '<div style="font-size:11px;color:var(--amber);margin-top:8px">⚠️ Precio cerca del nivel ' + esc(s.nearFibLevels[0].l) + ' — zona de confluencia técnica</div>';
+  }
+  html += '</div>';
 
-  <!-- Divergencias -->
-  ${(s.divergences?.bullDiv || s.divergences?.bearDiv) ? `
-  <div style="padding:10px 12px;border-radius:var(--r);margin-bottom:12px;${s.divergences.bullDiv?'background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3)':'background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3)'}">
-    <span style="font-size:12px;font-weight:500;color:${s.divergences.bullDiv?'var(--green)':'var(--red)'}">
-      ${s.divergences.bullDiv ? '🔄 Divergencia alcista RSI detectada' : '🔄 Divergencia bajista RSI detectada'}</span>
-    <span style="font-size:11px;color:var(--text-s);margin-left:8px">
-      ${s.divergences.bullDiv ? 'Precio hace mínimo más bajo pero RSI no confirma — agotamiento vendedor' : 'Precio hace máximo más alto pero RSI no confirma — agotamiento comprador'}
-    </span>
-  </div>` : ''}
+  // ── DIVERGENCIAS ──
+  if (s.divergences && (s.divergences.bullDiv || s.divergences.bearDiv)) {
+    const divBull = s.divergences.bullDiv;
+    const divColor = divBull ? 'var(--green)' : 'var(--red)';
+    const divBg = divBull ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)';
+    const divBorder = divBull ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)';
+    html += '<div style="padding:10px 12px;border-radius:var(--r);margin-bottom:12px;background:' + divBg + ';border:1px solid ' + divBorder + '">';
+    html += '<span style="font-size:12px;font-weight:500;color:' + divColor + '">🔄 Divergencia ' + (divBull?'alcista':'bajista') + ' RSI detectada</span>';
+    html += '<span style="font-size:11px;color:var(--text-s);margin-left:8px">' + (divBull?'Precio hace mínimo más bajo pero RSI no confirma — agotamiento vendedor':'Precio hace máximo más alto pero RSI no confirma — agotamiento comprador') + '</span>';
+    html += '</div>';
+  }
 
-  <!-- Escenarios -->
-  <div style="margin-bottom:12px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">🎯 Escenarios posibles</div>
-    <div class="scenario-grid">
-      ${scenarios.map(sc=>`
-        <div class="scenario-card" style="border-color:${sc.color}33">
-          <div class="scenario-label" style="color:${sc.color}">${sc.icon} ${esc(sc.label)}</div>
-          <div class="scenario-condition">${esc(sc.condition)}</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span class="scenario-prob" style="background:${sc.color}22;color:${sc.color}">${esc(sc.probability)}</span>
-            ${sc.target ? `<span style="font-family:var(--mono);font-size:12px;color:${sc.color}">${esc(sc.target)} <span style="font-size:10px;color:var(--text-t)">${sc.targetPct||''}</span></span>` : ''}
-          </div>
-          <ul class="scenario-explain" style="list-style:none">
-            ${(sc.triggers||[]).filter(Boolean).map(t=>`<li>${esc(t)}</li>`).join('')}
-          </ul>
-        </div>`).join('')}
-    </div>
-  </div>
+  // ── ESCENARIOS ──
+  html += '<div style="margin-bottom:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">🎯 Escenarios posibles</div>';
+  html += '<div class="scenario-grid">';
+  scenarios.forEach(function(sc){
+    html += '<div class="scenario-card" style="border-color:' + sc.color + '33">';
+    html += '<div class="scenario-label" style="color:' + sc.color + '">' + sc.icon + ' ' + esc(sc.label) + '</div>';
+    html += '<div class="scenario-condition">' + esc(sc.condition) + '</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    html += '<span class="scenario-prob" style="background:' + sc.color + '22;color:' + sc.color + '">' + esc(sc.probability) + '</span>';
+    if (sc.target) html += '<span style="font-family:var(--mono);font-size:12px;color:' + sc.color + '">' + esc(sc.target) + ' <span style="font-size:10px;color:var(--text-t)">' + esc(sc.targetPct||'') + '</span></span>';
+    html += '</div><ul class="scenario-explain" style="list-style:none">';
+    (sc.triggers||[]).filter(Boolean).forEach(function(t){ html += '<li>' + esc(t) + '</li>'; });
+    html += '</ul></div>';
+  });
+  html += '</div></div>';
 
-  <!-- Señales por estrategia -->
-  <div style="margin-bottom:12px">
-    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">📋 Señales por estrategia</div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      ${Object.entries(grouped).map(([cat, sigs]) => {
-        const catColor = catColors[cat] || '#818a94';
-        return sigs.map(sig => `
-          <div class="signal-item ${sig.bull===true?'bull':sig.bull===false?'bear':'neutral'}" style="position:relative">
-            <span style="font-size:9px;padding:1px 6px;border-radius:99px;background:${catColor}22;color:${catColor};border:1px solid ${catColor}44;flex-shrink:0;margin-right:2px;white-space:nowrap">${esc(cat)}</span>
-            <span class="signal-icon">${sig.icon}</span>
-            <span class="signal-text">${esc(sig.text)}</span>
-            ${sig.weight > 0 ? `<span style="font-size:9px;color:var(--text-t);flex-shrink:0;margin-left:4px">×${sig.weight}</span>` : ''}
-          </div>`).join('');
-      }).join('')}
-    </div>
-  </div>
+  // ── SEÑALES POR ESTRATEGIA ──
+  html += '<div style="margin-bottom:12px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">📋 Señales por estrategia</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:6px">';
+  Object.keys(grouped).forEach(function(cat){
+    const catColor = catColors[cat] || '#818a94';
+    grouped[cat].forEach(function(sig){
+      const cls = sig.bull===true?'bull':sig.bull===false?'bear':'neutral';
+      html += '<div class="signal-item ' + cls + '">';
+      html += '<span style="font-size:9px;padding:1px 6px;border-radius:99px;background:' + catColor + '22;color:' + catColor + ';border:1px solid ' + catColor + '44;flex-shrink:0;margin-right:2px;white-space:nowrap">' + esc(cat) + '</span>';
+      html += '<span class="signal-icon">' + sig.icon + '</span>';
+      html += '<span class="signal-text">' + esc(sig.text) + '</span>';
+      if (sig.weight > 0) html += '<span style="font-size:9px;color:var(--text-t);flex-shrink:0;margin-left:4px">×' + sig.weight + '</span>';
+      html += '</div>';
+    });
+  });
+  html += '</div></div>';
 
-  <div style="font-size:10px;color:var(--text-t);text-align:right;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
-    Analizado: ${s.analyzedAt?new Date(s.analyzedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):''} · ${s.barsCount} barras diarias · 
-    Estrategias: Weinstein · MACD (Appel) · Bollinger · RSI (Wilder) · OBV (Granville) · Estocástico · Fibonacci
-  </div>
-</div>
-<div class="signals-disclaimer">
-  ⚠️ Análisis técnico informativo — NO es asesoramiento financiero ni garantía de resultados.<br>
-  Los indicadores técnicos son herramientas de probabilidad, no de certeza. Siempre hacé tu propio análisis.
-</div>`;
+  // ── FOOTER ──
+  const analyzedTime = s.analyzedAt ? new Date(s.analyzedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+  html += '<div style="font-size:10px;color:var(--text-t);text-align:right;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">';
+  html += 'Analizado: ' + analyzedTime + ' · ' + (s.barsCount||0) + ' barras · Weinstein · MACD (Appel) · Bollinger · RSI (Wilder) · OBV (Granville) · Estocástico · Fibonacci';
+  html += '</div>';
+
+  html += '</div>';
+  html += '<div class="signals-disclaimer">⚠️ Análisis técnico informativo — NO es asesoramiento financiero. Los indicadores son herramientas de probabilidad, no de certeza.</div>';
+
+  return html;
 }
 
 // -- NEWS --
