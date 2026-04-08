@@ -576,6 +576,55 @@ document.getElementById('sig-ticker-input').addEventListener('keydown', e => {
 
 document.getElementById('refresh-signals-btn').addEventListener('click', runSignal);
 
+// ── NEWS ──
+async function loadNews() {
+  const el = document.getElementById('news-list');
+  const btn = document.getElementById('refresh-news-btn');
+  if (!el || !btn) return;
+  el.innerHTML = '<div class="signal-loading">Obteniendo y analizando noticias con IA...</div>';
+  btn.disabled = true; btn.classList.add('spinning');
+  try {
+    const r = await fetch('/api/news');
+    const d = await r.json();
+    btn.disabled = false; btn.classList.remove('spinning');
+    if (d.error && (!d.news || !d.news.length)) {
+      el.innerHTML = `<p class="empty-state" style="color:var(--red)">${esc(d.error)}</p>`; return;
+    }
+    if (!d.news || !d.news.length) {
+      el.innerHTML = '<p class="empty-state">No se pudieron obtener noticias. Intentá de nuevo.</p>'; return;
+    }
+    const ft = d.fetchedAt ? new Date(d.fetchedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
+    el.innerHTML = d.news.map(n => {
+      const ic = n.impacto==='positivo'?'#22c55e':n.impacto==='negativo'?'#ef4444':n.impacto==='mixto'?'#eab308':'#818a94';
+      const bg = n.impacto==='positivo'?'rgba(34,197,94,0.1)':n.impacto==='negativo'?'rgba(239,68,68,0.1)':n.impacto==='mixto'?'rgba(234,179,8,0.1)':'rgba(129,138,148,0.08)';
+      const ii = n.impacto==='positivo'?'📈':n.impacto==='negativo'?'📉':n.impacto==='mixto'?'↔️':'➡️';
+      const hl = n.horizonte==='inmediato'?'⚡ Inmediato':n.horizonte==='corto'?'⏱ Corto plazo':'📅 Mediano plazo';
+      const mp = Math.min(((n.magnitud||1)/10)*100,100);
+      const mc = (n.magnitud||0)>=7?'var(--red)':(n.magnitud||0)>=4?'var(--amber)':'var(--green)';
+      return `<div class="news-card">
+        <div class="news-header">
+          <div class="news-title">${esc(n.titulo||'')}</div>
+          <div class="impact-badge" style="color:${ic};border-color:${ic};background:${bg}">${ii} ${(n.impacto||'').charAt(0).toUpperCase()+(n.impacto||'').slice(1)}</div>
+        </div>
+        <div class="news-meta"><span class="news-source">📰 ${esc(n.fuente||'')}</span><span class="news-horizon">${hl}</span></div>
+        <div class="news-summary">${esc(n.resumen||'')}</div>
+        ${n.activos?.length?`<div class="news-assets">${n.activos.map(a=>`<span class="asset-tag" style="color:${ic};border-color:${ic};background:${bg}">${esc(a)}</span>`).join('')}</div>`:''}
+        ${n.mercadosAfectados?.length?`<div class="news-markets">${n.mercadosAfectados.map(m=>`<span class="market-tag">${esc(m)}</span>`).join('')}</div>`:''}
+        <div class="magnitude-bar">
+          <span class="mag-label">Impacto</span>
+          <div class="mag-track"><div class="mag-fill" style="width:${mp}%;background:${mc}"></div></div>
+          <span class="mag-val">${n.magnitud||'?'}/10</span>
+        </div>
+      </div>`;
+    }).join('') + `<div style="font-size:10px;color:var(--text-t);text-align:center;margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:var(--r)">
+      ⚠️ Análisis generado por IA. No es asesoramiento financiero.${ft?' · Actualizado: '+ft:''}</div>`;
+  } catch(err) {
+    btn.disabled = false; btn.classList.remove('spinning');
+    el.innerHTML = `<p class="empty-state" style="color:var(--red)">Error: ${err.message}</p>`;
+  }
+}
+document.getElementById('refresh-news-btn').addEventListener('click', loadNews);
+
 async function runSignal() {
   const ticker = document.getElementById('sig-ticker-input').value.trim().toUpperCase();
   const el = document.getElementById('signals-list');
