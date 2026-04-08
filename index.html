@@ -119,17 +119,42 @@ td.empty-state{text-align:center;padding:20px}
 .btn-confirm{padding:8px 16px;border:none;border-radius:8px;background:var(--green);color:#000;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)}
 
 /* SIGNALS */
-.signals-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.sig-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl)}
+.mode-toggle{display:flex;gap:3px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:3px}
+.mode-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-family:var(--sans);cursor:pointer;border:none;background:transparent;color:var(--text-s);transition:.15s;white-space:nowrap}
+.mode-btn.active{background:var(--bg-hover);color:var(--text);font-weight:500}
+.mode-btn.scalp.active{background:rgba(239,68,68,0.2);color:#fca5a5}
+.mode-btn.spot.active{background:rgba(34,197,94,0.2);color:#86efac}
+.ticker-search{display:flex;gap:8px;flex:1;min-width:200px}
+.ticker-input{flex:1;background:var(--bg-card);border:1px solid var(--border-md);border-radius:var(--r);padding:7px 12px;font-size:12px;font-family:var(--mono);color:var(--text);outline:none;text-transform:uppercase}
+.ticker-input::placeholder{text-transform:none;color:var(--text-t)}
+.ticker-input:focus{border-color:var(--blue)}
+.quick-tickers{display:flex;gap:5px;flex-wrap:wrap}
+.qt{font-size:11px;padding:3px 8px;border:1px solid var(--border-md);border-radius:6px;background:transparent;color:var(--text-s);cursor:pointer;font-family:var(--mono)}
+.qt:hover{background:var(--bg-hover);color:var(--text)}
 .signal-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:12px}
-.signal-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.signal-card.scalp-card{border-color:rgba(239,68,68,0.25)}
+.signal-card.spot-card{border-color:rgba(34,197,94,0.15)}
+.signal-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px}
 .signal-asset{display:flex;align-items:center;gap:10px}
 .signal-name{font-size:14px;font-weight:500}
 .signal-price{font-family:var(--mono);font-size:13px;color:var(--text-s)}
-.verdict-badge{padding:5px 12px;border-radius:99px;font-size:12px;font-weight:500;border:1px solid}
-.signal-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;padding:10px;background:var(--bg-card);border-radius:var(--r)}
+.verdict-badge{padding:5px 14px;border-radius:99px;font-size:12px;font-weight:500;border:1px solid;white-space:nowrap}
+.signal-meta{display:grid;gap:8px;margin-bottom:12px;padding:12px;background:var(--bg-card);border-radius:var(--r)}
+.signal-meta.scalp-meta{grid-template-columns:repeat(3,1fr)}
+.signal-meta.spot-meta{grid-template-columns:repeat(4,1fr)}
 .signal-meta-item{text-align:center}
 .signal-meta-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:3px}
 .signal-meta-value{font-family:var(--mono);font-size:12px;color:var(--text)}
+.futures-box{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.futures-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:10px;text-align:center}
+.futures-item.entry{border-color:var(--blue)}
+.futures-item.tp-box{border-color:var(--green)}
+.futures-item.sl-box{border-color:var(--red)}
+.futures-item.lev-box{border-color:var(--amber)}
+.futures-label{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:4px}
+.futures-value{font-family:var(--mono);font-size:14px;font-weight:500}
+.futures-sub{font-size:9px;color:var(--text-t);margin-top:2px}
 .signal-items{display:flex;flex-direction:column;gap:6px}
 .signal-item{display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:7px 10px;border-radius:var(--r);background:var(--bg-card)}
 .signal-item.bull{border-left:2px solid var(--green)}
@@ -263,17 +288,30 @@ td.empty-state{text-align:center;padding:20px}
     </section>
 
     <section class="view" id="view-signals">
-      <div class="signals-header">
-        <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">Análisis técnico de tus posiciones</div>
-          <div style="font-size:11px;color:var(--text-t);margin-top:3px">Basado en Stage Analysis (Stan Weinstein) · EMA 20/50/200 · RSI 14 · Volumen</div>
+      <div class="sig-controls">
+        <div class="mode-toggle">
+          <button class="mode-btn scalp active" id="mode-scalp">⚡ Futuros 5m</button>
+          <button class="mode-btn spot" id="mode-spot">📈 Spot</button>
         </div>
-        <button class="icon-btn" id="refresh-signals-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          Analizar
-        </button>
+        <div class="ticker-search">
+          <input class="ticker-input" id="sig-ticker-input" placeholder="Ej: BTC, ETH, SOL, AAPL..." maxlength="12"/>
+          <button class="icon-btn" id="refresh-signals-btn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Analizar
+          </button>
+        </div>
+        <div class="quick-tickers" id="quick-tickers">
+          <button class="qt" data-t="BTC">BTC</button>
+          <button class="qt" data-t="ETH">ETH</button>
+          <button class="qt" data-t="SOL">SOL</button>
+          <button class="qt" data-t="BNB">BNB</button>
+          <button class="qt" data-t="XRP">XRP</button>
+          <button class="qt" data-t="DOGE">DOGE</button>
+          <button class="qt" data-t="AVAX">AVAX</button>
+          <button class="qt" data-t="LINK">LINK</button>
+        </div>
       </div>
-      <div id="signals-list"><p class="empty-state" style="margin-top:20px">Hacé click en "Analizar" para obtener señales de tus posiciones.</p></div>
+      <div id="signals-list"><p class="empty-state">Seleccioná un modo, escribí un ticker y hacé click en Analizar.</p></div>
     </section>
 
   </main>
@@ -454,121 +492,245 @@ function handleDelExp(id){deleteExpense(id);renderAll()}
 function handleDelInc(id){deleteIncome(id);renderAll()}
 
 // ── SIGNALS ──
-async function loadSignals() {
+let signalMode = 'scalp';
+
+document.getElementById('mode-scalp').addEventListener('click', () => {
+  signalMode = 'scalp';
+  document.getElementById('mode-scalp').classList.add('active');
+  document.getElementById('mode-spot').classList.remove('active');
+  document.getElementById('quick-tickers').innerHTML = `
+    <button class="qt" data-t="BTC">BTC</button>
+    <button class="qt" data-t="ETH">ETH</button>
+    <button class="qt" data-t="SOL">SOL</button>
+    <button class="qt" data-t="BNB">BNB</button>
+    <button class="qt" data-t="XRP">XRP</button>
+    <button class="qt" data-t="DOGE">DOGE</button>
+    <button class="qt" data-t="AVAX">AVAX</button>
+    <button class="qt" data-t="LINK">LINK</button>`;
+  bindQuickTickers();
+});
+
+document.getElementById('mode-spot').addEventListener('click', () => {
+  signalMode = 'spot';
+  document.getElementById('mode-spot').classList.add('active');
+  document.getElementById('mode-scalp').classList.remove('active');
+  document.getElementById('quick-tickers').innerHTML = `
+    <button class="qt" data-t="BTC">BTC</button>
+    <button class="qt" data-t="ETH">ETH</button>
+    <button class="qt" data-t="SOL">SOL</button>
+    <button class="qt" data-t="AAPL">AAPL</button>
+    <button class="qt" data-t="NVDA">NVDA</button>
+    <button class="qt" data-t="SPY">SPY</button>
+    <button class="qt" data-t="MELI">MELI</button>
+    <button class="qt" data-t="TSLA">TSLA</button>`;
+  bindQuickTickers();
+});
+
+function bindQuickTickers() {
+  document.querySelectorAll('.qt').forEach(b => {
+    b.addEventListener('click', () => {
+      document.getElementById('sig-ticker-input').value = b.getAttribute('data-t');
+      runSignal();
+    });
+  });
+}
+bindQuickTickers();
+
+document.getElementById('sig-ticker-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runSignal();
+  document.getElementById('sig-ticker-input').value = document.getElementById('sig-ticker-input').value.toUpperCase();
+});
+
+document.getElementById('refresh-signals-btn').addEventListener('click', runSignal);
+
+async function runSignal() {
+  const ticker = document.getElementById('sig-ticker-input').value.trim().toUpperCase();
   const el = document.getElementById('signals-list');
   const btn = document.getElementById('refresh-signals-btn');
-  if (!db.operations.length) {
-    el.innerHTML = '<p class="empty-state" style="margin-top:20px">No tenés operaciones registradas todavía.</p>';
-    return;
+  if (!ticker) { el.innerHTML = '<p class="empty-state">Ingresá un ticker primero.</p>'; return; }
+
+  el.innerHTML = `<div class="signal-loading">Analizando ${ticker} en modo ${signalMode === 'scalp' ? 'Futuros 5m' : 'Spot'}... puede tardar unos segundos.</div>`;
+  btn.disabled = true; btn.classList.add('spinning');
+
+  try {
+    const r = await fetch('/api/signals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker, mode: signalMode }),
+    });
+    const s = await r.json();
+    btn.disabled = false; btn.classList.remove('spinning');
+
+    if (s.error) {
+      el.innerHTML = `<p class="empty-state" style="color:var(--red)">${esc(s.error)}</p>`;
+      return;
+    }
+
+    if (signalMode === 'scalp') {
+      el.innerHTML = renderScalpCard(s);
+    } else {
+      el.innerHTML = renderSpotCard(s);
+    }
+  } catch(err) {
+    btn.disabled = false; btn.classList.remove('spinning');
+    el.innerHTML = `<p class="empty-state" style="color:var(--red)">Error: ${err.message}</p>`;
   }
+}
 
-  el.innerHTML = '<div class="signal-loading">Analizando tus posiciones... puede tardar unos segundos.</div>';
-  btn.disabled = true;
-  btn.classList.add('spinning');
+function renderScalpCard(s) {
+  const verdictBg = s.score >= 4  ? 'rgba(34,197,94,0.15)'   :
+                    s.score <= -4 ? 'rgba(239,68,68,0.15)'   :
+                                    'rgba(234,179,8,0.15)';
 
-  // Deduplica por ticker
-  const unique = [...new Map(db.operations.map(o => [o.ticker, o])).values()];
+  const slPct  = s.sl && s.entry ? Math.abs((s.sl - s.entry) / s.entry * 100).toFixed(2) : '—';
+  const tpPct  = s.tp && s.entry ? Math.abs((s.tp - s.entry) / s.entry * 100).toFixed(2) : '—';
+  const liqPct = s.leverage ? (100 / s.leverage).toFixed(1) : '—';
 
-  const results = await Promise.allSettled(
-    unique.map(op =>
-      fetch('/api/signals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: op.ticker, type: op.type }),
-      }).then(r => r.json())
-    )
-  );
-
-  btn.disabled = false;
-  btn.classList.remove('spinning');
-
-  const signals = results
-    .filter(r => r.status === 'fulfilled' && !r.value.error)
-    .map(r => r.value);
-
-  if (!signals.length) {
-    el.innerHTML = '<p class="empty-state" style="margin-top:20px">No se pudieron obtener datos para analizar. Intentá de nuevo.</p>';
-    return;
-  }
-
-  // Ordena: compra fuerte primero, venta fuerte último
-  signals.sort((a, b) => b.score - a.score);
-
-  el.innerHTML = signals.map(s => {
-    const rsiStr = s.rsi != null ? s.rsi.toFixed(1) : '—';
-    const e20Str = s.ema20  ? `$${s.ema20.toFixed(2)}`  : '—';
-    const e50Str = s.ema50  ? `$${s.ema50.toFixed(2)}`  : '—';
-    const e200Str= s.ema200 ? `$${s.ema200.toFixed(2)}` : '—';
-    const volStr = s.volRatio ? `${s.volRatio.toFixed(1)}x` : '—';
-
-    // Color del badge de veredicto
-    const verdictBg = s.score >= 5  ? 'rgba(34,197,94,0.15)'   :
-                      s.score >= 2  ? 'rgba(134,239,172,0.15)' :
-                      s.score >= -1 ? 'rgba(234,179,8,0.15)'   :
-                      s.score >= -4 ? 'rgba(252,165,165,0.15)' :
-                                      'rgba(239,68,68,0.15)';
-
-    return `
-    <div class="signal-card">
-      <div class="signal-card-header">
-        <div class="signal-asset">
-          <span class="ticker-chip" style="font-size:13px;padding:4px 10px">${esc(s.ticker)}</span>
-          <div>
-            <span class="signal-name">${esc(s.ticker)}</span>
-            <span class="signal-stage">${esc(s.stage)}</span>
-          </div>
-          <span class="signal-price">$${s.currentPrice.toFixed(2)}</span>
+  return `
+  <div class="signal-card scalp-card">
+    <div class="signal-card-header">
+      <div class="signal-asset">
+        <span class="ticker-chip" style="font-size:13px;padding:4px 10px">${esc(s.ticker)}</span>
+        <div>
+          <span class="signal-name">${esc(s.pair || s.ticker)}</span>
+          <span class="signal-stage">⚡ Futuros 5m · ICT/SMC</span>
         </div>
-        <div class="verdict-badge" style="color:${s.verdictColor};border-color:${s.verdictColor};background:${verdictBg}">
-          ${s.verdictIcon} ${s.verdict}
-        </div>
+        <span class="signal-price">$${Number(s.currentPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</span>
       </div>
-
-      <div class="signal-meta">
-        <div class="signal-meta-item">
-          <div class="signal-meta-label">RSI 14</div>
-          <div class="signal-meta-value" style="color:${s.rsi < 30 ? 'var(--green)' : s.rsi > 70 ? 'var(--red)' : 'var(--text)'}">${rsiStr}</div>
-        </div>
-        <div class="signal-meta-item">
-          <div class="signal-meta-label">EMA 50</div>
-          <div class="signal-meta-value">${e50Str}</div>
-        </div>
-        <div class="signal-meta-item">
-          <div class="signal-meta-label">EMA 200</div>
-          <div class="signal-meta-value">${e200Str}</div>
-        </div>
-        <div class="signal-meta-item">
-          <div class="signal-meta-label">Volumen</div>
-          <div class="signal-meta-value" style="color:${s.volRatio > 1.5 ? 'var(--amber)' : 'var(--text)'}">${volStr}</div>
-        </div>
+      <div class="verdict-badge" style="color:${s.verdictColor};border-color:${s.verdictColor};background:${verdictBg}">
+        ${s.verdictIcon} ${s.verdict}
       </div>
+    </div>
 
-      <div class="signal-items">
-        ${(s.signals || []).map(sig => `
-          <div class="signal-item ${sig.bull === true ? 'bull' : sig.bull === false ? 'bear' : 'neutral'}">
-            <span class="signal-icon">${sig.icon}</span>
-            <span class="signal-text">${esc(sig.text)}</span>
-          </div>`).join('')}
+    ${s.direction !== 'NEUTRAL — esperar mejor setup' ? `
+    <div class="futures-box">
+      <div class="futures-item entry">
+        <div class="futures-label">Entry</div>
+        <div class="futures-value" style="color:var(--blue)">$${s.entry ? Number(s.entry).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6}) : '—'}</div>
+        <div class="futures-sub">${s.direction}</div>
       </div>
-    </div>`;
-  }).join('') + `
+      <div class="futures-item tp-box">
+        <div class="futures-label">Take Profit</div>
+        <div class="futures-value" style="color:var(--green)">$${s.tp ? Number(s.tp).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6}) : '—'}</div>
+        <div class="futures-sub">+${tpPct}% · R:R ${s.rr || '—'}</div>
+      </div>
+      <div class="futures-item sl-box">
+        <div class="futures-label">Stop Loss</div>
+        <div class="futures-value" style="color:var(--red)">$${s.sl ? Number(s.sl).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6}) : '—'}</div>
+        <div class="futures-sub">-${slPct}%</div>
+      </div>
+      <div class="futures-item lev-box">
+        <div class="futures-label">Leverage</div>
+        <div class="futures-value" style="color:var(--amber)">${s.leverage || '—'}x</div>
+        <div class="futures-sub">Liquidación a -${liqPct}%</div>
+      </div>
+      <div class="futures-item">
+        <div class="futures-label">ATR 14</div>
+        <div class="futures-value">$${s.atr ? Number(s.atr).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6}) : '—'}</div>
+        <div class="futures-sub">Volatilidad</div>
+      </div>
+      <div class="futures-item">
+        <div class="futures-label">VWAP</div>
+        <div class="futures-value">$${s.vwap ? Number(s.vwap).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6}) : '—'}</div>
+        <div class="futures-sub">${s.currentPrice > s.vwap ? 'Sobre VWAP' : 'Bajo VWAP'}</div>
+      </div>
+    </div>` : `<div style="padding:12px;background:var(--bg-card);border-radius:var(--r);text-align:center;color:var(--amber);font-size:13px;margin-bottom:12px">
+      ⚖️ Setup no confirmado — esperá convergencia de señales antes de entrar
+    </div>`}
+
+    <div class="signal-meta scalp-meta">
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">RSI 14</div>
+        <div class="signal-meta-value" style="color:${s.rsi < 35 ? 'var(--green)' : s.rsi > 65 ? 'var(--red)' : 'var(--text)'}">${s.rsi || '—'}</div>
+      </div>
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">EMA 9</div>
+        <div class="signal-meta-value">$${s.ema9 ? Number(s.ema9).toFixed(4) : '—'}</div>
+      </div>
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">EMA 21</div>
+        <div class="signal-meta-value">$${s.ema21 ? Number(s.ema21).toFixed(4) : '—'}</div>
+      </div>
+    </div>
+
+    <div class="signal-items">
+      ${(s.signals || []).map(sig => `
+        <div class="signal-item ${sig.bull === true ? 'bull' : sig.bull === false ? 'bear' : 'neutral'}">
+          <span class="signal-icon">${sig.icon}</span>
+          <span class="signal-text">${esc(sig.text)}</span>
+        </div>`).join('')}
+    </div>
+
+    <div style="font-size:10px;color:var(--text-t);margin-top:10px;text-align:right">
+      Analizado: ${new Date(s.analyzedAt).toLocaleTimeString('es-AR')} · Técnica: Liquidity Sweep + Order Block (ICT) · ATR-based TP/SL
+    </div>
+  </div>
   <div class="signals-disclaimer">
-    ⚠️ Esto es análisis técnico informativo, no es asesoramiento financiero.<br>
-    Estrategia: Stage Analysis (Stan Weinstein) + EMA 20/50/200 + RSI 14 (Welles Wilder) + Análisis de volumen.<br>
-    Siempre hacé tu propio análisis antes de operar.
+    ⚠️ <strong>ADVERTENCIA:</strong> El trading con leverage en futuros conlleva riesgo de liquidación total del capital.<br>
+    Técnica: ICT/Smart Money Concepts (Michael Huddleston) + VWAP institucional + ATR dinámico.<br>
+    Leverage sugerido basado en volatilidad — nunca usar más del 1-2% del capital por operación. Esto NO es asesoramiento financiero.
   </div>`;
 }
 
-document.getElementById('refresh-signals-btn').addEventListener('click', loadSignals);
+function renderSpotCard(s) {
+  const verdictBg = s.score >= 5  ? 'rgba(34,197,94,0.15)'   :
+                    s.score >= 2  ? 'rgba(134,239,172,0.12)'  :
+                    s.score >= -1 ? 'rgba(234,179,8,0.12)'    :
+                    s.score >= -4 ? 'rgba(252,165,165,0.12)'  :
+                                    'rgba(239,68,68,0.15)';
+  return `
+  <div class="signal-card spot-card">
+    <div class="signal-card-header">
+      <div class="signal-asset">
+        <span class="ticker-chip" style="font-size:13px;padding:4px 10px">${esc(s.ticker)}</span>
+        <div>
+          <span class="signal-name">${esc(s.ticker)}</span>
+          <span class="signal-stage">${esc(s.stage || '')}</span>
+        </div>
+        <span class="signal-price">$${Number(s.currentPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</span>
+      </div>
+      <div class="verdict-badge" style="color:${s.verdictColor};border-color:${s.verdictColor};background:${verdictBg}">
+        ${s.verdictIcon} ${s.verdict}
+      </div>
+    </div>
 
-// Auto-carga señales al entrar a la pestaña
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    if (t.getAttribute('data-view') === 'signals' && db.operations.length) {
-      loadSignals();
-    }
-  });
-});
+    <div class="signal-meta spot-meta">
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">RSI 14</div>
+        <div class="signal-meta-value" style="color:${s.rsi < 30 ? 'var(--green)' : s.rsi > 70 ? 'var(--red)' : 'var(--text)'}">${s.rsi ? Number(s.rsi).toFixed(1) : '—'}</div>
+      </div>
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">EMA 50</div>
+        <div class="signal-meta-value">$${s.ema50 ? Number(s.ema50).toFixed(4) : '—'}</div>
+      </div>
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">EMA 200</div>
+        <div class="signal-meta-value">$${s.ema200 ? Number(s.ema200).toFixed(4) : '—'}</div>
+      </div>
+      <div class="signal-meta-item">
+        <div class="signal-meta-label">Volumen</div>
+        <div class="signal-meta-value" style="color:${s.volRatio > 1.5 ? 'var(--amber)' : 'var(--text)'}">${s.volRatio ? Number(s.volRatio).toFixed(1) + 'x' : '—'}</div>
+      </div>
+    </div>
+
+    <div class="signal-items">
+      ${(s.signals || []).map(sig => `
+        <div class="signal-item ${sig.bull === true ? 'bull' : sig.bull === false ? 'bear' : 'neutral'}">
+          <span class="signal-icon">${sig.icon}</span>
+          <span class="signal-text">${esc(sig.text)}</span>
+        </div>`).join('')}
+    </div>
+
+    <div style="font-size:10px;color:var(--text-t);margin-top:10px;text-align:right">
+      Analizado: ${new Date(s.analyzedAt).toLocaleTimeString('es-AR')} · Técnica: Stage Analysis (Weinstein) + EMA 20/50/200 + RSI 14
+    </div>
+  </div>
+  <div class="signals-disclaimer">
+    ⚠️ Análisis técnico informativo, no es asesoramiento financiero.<br>
+    Stage Analysis (Stan Weinstein, 1988) + EMA 20/50/200 + RSI 14 (Welles Wilder) + Volumen.<br>
+    Siempre hacé tu propio análisis antes de operar.
+  </div>`;
+}
 function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));const el=document.getElementById(`view-${v}`);if(el)el.classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.getAttribute('data-view')===v))}
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showView(t.getAttribute('data-view'))));
 
