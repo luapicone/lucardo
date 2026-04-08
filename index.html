@@ -672,12 +672,29 @@ function renderScalpCard(s) {
   </div>`;
 }
 
+function fmtP(n, d=4) { if (!n) return '—'; return '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:d<=2?2:2,maximumFractionDigits:d}); }
+function pctChg(cur, target) { if (!cur||!target) return ''; const p=((target-cur)/cur*100); return (p>=0?'+':'')+p.toFixed(1)+'%'; }
+
 function renderSpotCard(s) {
   const verdictBg = s.score >= 5  ? 'rgba(34,197,94,0.15)'   :
                     s.score >= 2  ? 'rgba(134,239,172,0.12)'  :
                     s.score >= -1 ? 'rgba(234,179,8,0.12)'    :
                     s.score >= -4 ? 'rgba(252,165,165,0.12)'  :
                                     'rgba(239,68,68,0.15)';
+  const cur = s.currentPrice;
+
+  // Proyecciones — color según dirección
+  const projColor = (p) => p >= cur ? 'var(--green)' : 'var(--red)';
+
+  const reg = s.regression || {};
+  const st = reg.shortTerm || [];   // 3,5,7 días
+  const mt = reg.mediumTerm || [];  // 7,14,30 días
+  const lt = reg.longTerm || [];    // 30,60,90 días
+
+  const fib = s.fibonacci || {};
+  const sup = s.supports || [];
+  const res = s.resistances || [];
+
   return `
   <div class="signal-card spot-card">
     <div class="signal-card-header">
@@ -687,13 +704,14 @@ function renderSpotCard(s) {
           <span class="signal-name">${esc(s.ticker)}</span>
           <span class="signal-stage">${esc(s.stage || '')}</span>
         </div>
-        <span class="signal-price">$${Number(s.currentPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:6})}</span>
+        <span class="signal-price">$${Number(cur).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</span>
       </div>
       <div class="verdict-badge" style="color:${s.verdictColor};border-color:${s.verdictColor};background:${verdictBg}">
         ${s.verdictIcon} ${s.verdict}
       </div>
     </div>
 
+    <!-- Indicadores base -->
     <div class="signal-meta spot-meta">
       <div class="signal-meta-item">
         <div class="signal-meta-label">RSI 14</div>
@@ -701,18 +719,67 @@ function renderSpotCard(s) {
       </div>
       <div class="signal-meta-item">
         <div class="signal-meta-label">EMA 50</div>
-        <div class="signal-meta-value">$${s.ema50 ? Number(s.ema50).toFixed(4) : '—'}</div>
+        <div class="signal-meta-value" style="color:${cur > s.ema50 ? 'var(--green)' : 'var(--red)'}">${fmtP(s.ema50)}</div>
       </div>
       <div class="signal-meta-item">
         <div class="signal-meta-label">EMA 200</div>
-        <div class="signal-meta-value">$${s.ema200 ? Number(s.ema200).toFixed(4) : '—'}</div>
+        <div class="signal-meta-value" style="color:${cur > s.ema200 ? 'var(--green)' : 'var(--red)'}">${fmtP(s.ema200)}</div>
       </div>
       <div class="signal-meta-item">
         <div class="signal-meta-label">Volumen</div>
-        <div class="signal-meta-value" style="color:${s.volRatio > 1.5 ? 'var(--amber)' : 'var(--text)'}">${s.volRatio ? Number(s.volRatio).toFixed(1) + 'x' : '—'}</div>
+        <div class="signal-meta-value" style="color:${s.volRatio > 1.5 ? 'var(--amber)' : 'var(--text)'}">${s.volRatio ? Number(s.volRatio).toFixed(1)+'x' : '—'}</div>
       </div>
     </div>
 
+    <!-- Proyección de precios -->
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-t);margin-bottom:8px">📊 Proyección por regresión lineal</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
+          <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Corto plazo</div>
+          ${st.map(p=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div>`).join('')}
+        </div>
+        <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
+          <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Mediano plazo</div>
+          ${mt.map(p=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div>`).join('')}
+        </div>
+        <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
+          <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:6px">Largo plazo</div>
+          ${lt.map(p=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--text-t)">${p.period}d</span><span style="font-family:var(--mono);color:${projColor(p.price)}">${fmtP(p.price)} <span style="font-size:9px">${pctChg(cur,p.price)}</span></span></div>`).join('')}
+        </div>
+      </div>
+      <div style="font-size:9px;color:var(--text-t);margin-top:5px;text-align:center">⚠️ Proyección basada en regresión lineal de tendencia histórica — no garantiza resultados futuros</div>
+    </div>
+
+    <!-- Fibonacci + Soporte/Resistencia -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
+        <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:8px">🌀 Fibonacci (52 semanas)</div>
+        ${[
+          {l:'Ext 161.8%', v:fib.ext_1618},
+          {l:'Máx 100%',   v:fib.r_000},
+          {l:'Ret 23.6%',  v:fib.r_236},
+          {l:'Ret 38.2%',  v:fib.r_382},
+          {l:'Ret 50.0%',  v:fib.r_500},
+          {l:'Ret 61.8%',  v:fib.r_618},
+          {l:'Ret 78.6%',  v:fib.r_786},
+          {l:'Mín 100%',   v:fib.r_1000},
+        ].map(f=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;${Math.abs(f.v-cur)/cur<0.015?'background:rgba(234,179,8,0.1);border-radius:4px;padding:3px 4px;':''}"><span style="color:var(--text-t)">${f.l}</span><span style="font-family:var(--mono);color:${f.v>cur?'var(--red)':'var(--green)'}">${fmtP(f.v)}</span></div>`).join('')}
+      </div>
+      <div style="background:var(--bg-card);border-radius:var(--r);padding:10px;border:1px solid var(--border)">
+        <div style="font-size:9px;text-transform:uppercase;color:var(--text-t);margin-bottom:8px">📍 Soporte / Resistencia (60d)</div>
+        <div style="font-size:10px;color:var(--text-t);margin-bottom:4px">Resistencias</div>
+        ${res.filter(r=>r>cur).slice(0,3).map(r=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--red)">▲</span><span style="font-family:var(--mono)">${fmtP(r)} <span style="font-size:9px;color:var(--text-t)">${pctChg(cur,r)}</span></span></div>`).join('') || '<div style="font-size:11px;color:var(--text-t)">—</div>'}
+        <div style="font-size:10px;color:var(--text-t);margin:8px 0 4px">Soportes</div>
+        ${sup.filter(r=>r<cur).slice(0,3).map(r=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0"><span style="color:var(--green)">▼</span><span style="font-family:var(--mono)">${fmtP(r)} <span style="font-size:9px;color:var(--text-t)">${pctChg(cur,r)}</span></span></div>`).join('') || '<div style="font-size:11px;color:var(--text-t)">—</div>'}
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">52s Alto</span><span style="font-family:var(--mono);color:var(--red)">${fmtP(s.high52w)} (${Number(s.distFromHigh).toFixed(1)}%)</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:2px"><span style="color:var(--text-t)">52s Bajo</span><span style="font-family:var(--mono);color:var(--green)">${fmtP(s.low52w)} (+${Number(s.distFromLow).toFixed(1)}%)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Señales -->
     <div class="signal-items">
       ${(s.signals || []).map(sig => `
         <div class="signal-item ${sig.bull === true ? 'bull' : sig.bull === false ? 'bear' : 'neutral'}">
@@ -722,13 +789,13 @@ function renderSpotCard(s) {
     </div>
 
     <div style="font-size:10px;color:var(--text-t);margin-top:10px;text-align:right">
-      Analizado: ${new Date(s.analyzedAt).toLocaleTimeString('es-AR')} · Técnica: Stage Analysis (Weinstein) + EMA 20/50/200 + RSI 14
+      Analizado: ${new Date(s.analyzedAt).toLocaleTimeString('es-AR')} · ${s.barsCount} barras diarias
     </div>
   </div>
   <div class="signals-disclaimer">
-    ⚠️ Análisis técnico informativo, no es asesoramiento financiero.<br>
-    Stage Analysis (Stan Weinstein, 1988) + EMA 20/50/200 + RSI 14 (Welles Wilder) + Volumen.<br>
-    Siempre hacé tu propio análisis antes de operar.
+    ⚠️ Análisis técnico e informativo — NO es asesoramiento financiero.<br>
+    Técnicas: Stage Analysis (Weinstein) · EMA 20/50/200 · RSI 14 · Fibonacci · Regresión lineal de tendencia.<br>
+    Las proyecciones son matemáticas sobre tendencia pasada y NO predicen el futuro con certeza.
   </div>`;
 }
 function showView(v){document.querySelectorAll('.view').forEach(el=>el.classList.remove('active'));const el=document.getElementById(`view-${v}`);if(el)el.classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.getAttribute('data-view')===v))}
