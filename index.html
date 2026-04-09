@@ -383,13 +383,9 @@ td.empty-state{text-align:center;padding:20px}
         </button>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="news-filters">
-        <button class="news-filter active" data-filter="all">Todos</button>
-        <button class="news-filter" data-filter="acciones">Bolsa</button>
-        <button class="news-filter" data-filter="crypto">Cripto</button>
-        <button class="news-filter" data-filter="bonos">Bonos</button>
-        <button class="news-filter" data-filter="commodities">Commodities</button>
-        <button class="news-filter" data-filter="latam">Latam</button>
-        <button class="news-filter" data-filter="forex">Forex</button>
+        <button class="news-filter active" data-filter="all">🌐 Todas</button>
+        <button class="news-filter" data-filter="acciones">📊 Acciones / Bolsa</button>
+        <button class="news-filter" data-filter="crypto">₿ Cripto</button>
       </div>
       <div id="news-summary" style="display:none;margin-bottom:14px"></div>
       <div id="news-list"><p class="empty-state">Hacé click en "Actualizar" para obtener las últimas noticias analizadas.</p></div>
@@ -836,92 +832,128 @@ function buildSignalCard(s) {
     h += '</div></div>';
   }
 
-  // ── 7. PROYECCIONES MULTI-MÉTODO ──────────────────────────────────────────
+  // ── 7. PROYECCIONES DE PRECIO — MEDIANO Y LARGO PLAZO ──────────────────────
   h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:4px">🎯 Proyecciones de precio — 3 métodos independientes</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:14px">Usamos tres métodos distintos para estimar precios objetivo. Cuando los tres coinciden en una zona, esa zona tiene mayor relevancia técnica. <b>Estas son estimaciones basadas en datos históricos, no predicciones garantizadas.</b></div>';
+  h += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">📅 Proyecciones de precio — Mediano y Largo Plazo</div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:16px">Estimaciones basadas en tres estrategias técnicas independientes. Cuando varias coinciden en una zona, esa zona tiene más relevancia. <b>Son probabilidades, no certezas.</b></div>';
 
-  // Método 1: ATR (volatilidad)
   var atr = ind.atr || cur * 0.02;
-  var atrUp1 = +(cur + atr * 1.5).toFixed(4);
-  var atrUp2 = +(cur + atr * 3).toFixed(4);
-  var atrDn1 = +(cur - atr * 1.5).toFixed(4);
-  var atrDn2 = +(cur - atr * 3).toFixed(4);
-  h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px">';
-  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
-  h += '<div style="font-size:12px;font-weight:600;color:var(--text)">📐 Método 1: ATR (Average True Range) — basado en volatilidad real</div></div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">El ATR mide cuánto se mueve el precio en promedio cada día. Actualmente el ATR es <b>' + fp(atr) + ' (' + ind.atrPct + '%)</b> del precio. Multiplicamos ese valor para estimar cuánto puede moverse el precio en los próximos movimientos sin ser inusual.</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-  h += '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:var(--r);padding:10px">';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:4px">Objetivo alcista conservador (1.5× ATR)</div>';
-  h += '<div style="font-family:var(--mono);font-size:14px;color:var(--green)">' + fp(atrUp1) + ' <span style="font-size:11px">' + pp(atrUp1,cur) + '</span></div>';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Nivel alcanzable en el próximo movimiento normal</div></div>';
-  h += '<div style="background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);border-radius:var(--r);padding:10px">';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:4px">Objetivo alcista extendido (3× ATR)</div>';
-  h += '<div style="font-family:var(--mono);font-size:14px;color:#86efac">' + fp(atrUp2) + ' <span style="font-size:11px">' + pp(atrUp2,cur) + '</span></div>';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Nivel para movimientos fuertes o ruptura</div></div>';
-  h += '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:var(--r);padding:10px">';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:4px">Soporte conservador (1.5× ATR)</div>';
-  h += '<div style="font-family:var(--mono);font-size:14px;color:var(--red)">' + fp(atrDn1) + ' <span style="font-size:11px">' + pp(atrDn1,cur) + '</span></div>';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Primer nivel de corrección normal</div></div>';
-  h += '<div style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:var(--r);padding:10px">';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:4px">Soporte extendido (3× ATR)</div>';
-  h += '<div style="font-family:var(--mono);font-size:14px;color:#fca5a5">' + fp(atrDn2) + ' <span style="font-size:11px">' + pp(atrDn2,cur) + '</span></div>';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Nivel para correcciones más profundas</div></div>';
-  h += '</div></div>';
 
-  // Método 2: Fibonacci
-  h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px">';
-  h += '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px">🌀 Método 2: Niveles Fibonacci — basado en máximos y mínimos históricos</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Los niveles de Fibonacci identifican zonas donde el precio tiende a detenerse o rebotar. Se calculan entre el máximo ($' + s.high52w + ') y mínimo ($' + s.low52w + ') del último año. Los niveles que están <b>arriba del precio actual</b> son resistencias; los de <b>abajo</b> son soportes.</div>';
-  h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">';
-  var fibLevels = [
-    ['Ext 161.8%', fib.ext_1618, 'Objetivo alcista extendido — zona de expansión'],
-    ['Ret 23.6%',  fib.r_236,   'Corrección leve — primer soporte/resistencia Fib'],
-    ['Ret 38.2%',  fib.r_382,   'Corrección normal — nivel más común de pullback'],
-    ['Ret 50.0%',  fib.r_500,   'Corrección media — soporte/resistencia psicológico'],
-    ['Ret 61.8%',  fib.r_618,   'Retroceso dorado — el nivel más importante de Fibonacci'],
-    ['Ret 78.6%',  fib.r_786,   'Corrección profunda — zona de soporte/resistencia fuerte'],
+  // ── TABLA HORIZONTE DE TIEMPO ──────────────────────────────────────────────
+  // Calculamos targets por horizonte usando los 3 métodos
+  var horizons = [
+    {
+      label: '1 mes', period: '~30 días',
+      icon: '📅', color: '#3b82f6',
+      desc: 'Corto-mediano plazo. Movimiento ya observable en semanas.',
+      upTarget: +(cur + atr * 4).toFixed(4),
+      dnTarget: +(cur - atr * 4).toFixed(4),
+      fibTarget: fib.r_236 > cur ? fib.r_236 : (fib.r_786 < cur ? fib.r_786 : null),
+      emaTarget: ind.ema20,
+      method: 'ATR x4 · Fib 23.6% · EMA20',
+      whyUp: 'Un movimiento de 4× el ATR diario es normal en 30 días. El Fibonacci 23.6% es el primer objetivo en rallies. La EMA20 actúa como imán de corto plazo.',
+      whyDown: 'Una corrección de 4× ATR en 30 días es estadísticamente esperable. El Fib 23.6% sería el primer soporte a reconquistar.',
+    },
+    {
+      label: '3 meses', period: '~90 días',
+      icon: '📆', color: '#8b5cf6',
+      desc: 'Mediano plazo. Refleja la tendencia de un trimestre completo.',
+      upTarget: +(cur + atr * 8).toFixed(4),
+      dnTarget: +(cur - atr * 8).toFixed(4),
+      fibTarget: fib.r_382 > cur ? fib.r_382 : (fib.r_618 < cur ? fib.r_618 : null),
+      emaTarget: ind.ema50,
+      method: 'ATR x8 · Fib 38.2% · EMA50',
+      whyUp: 'En 90 días un activo puede moverse 8× su ATR diario de forma normal. El Fib 38.2% es el objetivo más común en tendencias alcistas. La EMA50 es el imán institucional.',
+      whyDown: 'Una corrección a Fib 38.2% o 61.8% es el escenario bajista típico de mediano plazo. La EMA50 como soporte es clave.',
+    },
+    {
+      label: '6-12 meses', period: '~180-365 días',
+      icon: '🗓️', color: '#f97316',
+      desc: 'Largo plazo. Captura ciclos completos de mercado.',
+      upTarget: +(fib.ext_1618 || cur * 1.3).toFixed(4),
+      dnTarget: +(fib.r_618 || cur * 0.7).toFixed(4),
+      fibTarget: fib.ext_1618,
+      emaTarget: ind.ema200,
+      method: 'Fib Ext 161.8% · ATR x15 · EMA200',
+      whyUp: 'La extensión Fibonacci 161.8% es el objetivo clásico en mercados alcistas. La EMA200 es el imán de largo plazo más poderoso. Aplica en Stage 2 (Weinstein).',
+      whyDown: 'El Fib 61.8% (retroceso dorado) es el soporte típico en correcciones prolongadas. La EMA200 como soporte es señal de mercado alcista mantenido.',
+    },
   ];
-  fibLevels.forEach(function(fv) {
-    var near = fv[1] && Math.abs(fv[1]-cur)/cur < 0.025;
-    var abv = fv[1] > cur;
-    var fc = abv ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)';
-    var bc = abv ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
-    var tc = abv ? 'var(--red)' : 'var(--green)';
-    h += '<div style="padding:8px;border-radius:6px;background:' + fc + ';border:1px solid ' + bc + (near?';outline:2px solid var(--amber)':'') + '">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center">';
-    h += '<div><div style="font-size:10px;color:var(--text-t)">' + fv[0] + (near?' ⚠️ Zona actual':'') + '</div>';
-    h += '<div style="font-size:9px;color:var(--text-t)">' + fv[2] + '</div></div>';
-    h += '<div style="font-family:var(--mono);font-size:12px;color:' + tc + '">' + fp(fv[1]) + ' <span style="font-size:10px">' + pp(fv[1],cur) + '</span></div></div></div>';
-  });
-  h += '</div></div>';
 
-  // Método 3: EMAs como imanes
-  h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:14px">';
-  h += '<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px">📈 Método 3: EMAs como imanes de precio — basado en medias móviles</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Las medias móviles actúan como "imanes" — el precio tiende a volver hacia ellas cuando se aleja demasiado. Este es un principio clave de la teoría de reversión a la media, ampliamente documentado en mercados financieros.</div>';
-  h += '<div style="display:flex;flex-direction:column;gap:8px">';
-  var emaTargets = [
-    [ind.ema20,  'EMA 20 (corto plazo)',  'En tendencias alcistas actúa como soporte. El precio suele volver a tocarlo en pullbacks.'],
-    [ind.ema50,  'EMA 50 (mediano plazo)', 'El nivel más seguido por fondos institucionales. Cruzar la EMA50 es una señal importante.'],
-    [ind.ema200, 'EMA 200 (largo plazo)', 'El imán de largo plazo más relevante. Si el precio está lejos, hay alta probabilidad de que vuelva.'],
-  ];
-  emaTargets.forEach(function(et) {
-    if (!et[0]) return;
-    var abv = cur > et[0];
-    var dist = ((et[0]-cur)/cur*100).toFixed(1);
-    var c = abv ? 'var(--green)' : 'var(--red)';
-    var dir = abv ? 'soporte abajo' : 'resistencia arriba';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-radius:var(--r);background:var(--bg-card);border:1px solid var(--border)">';
-    h += '<div><div style="font-size:12px;font-weight:500;color:var(--text)">' + et[1] + '</div>';
-    h += '<div style="font-size:11px;color:var(--text-s);margin-top:2px">' + et[2] + '</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-top:2px">Actúa como <b>' + dir + '</b> — si el precio va hacia allá puede frenar o rebotar</div></div>';
-    h += '<div style="text-align:right;flex-shrink:0;margin-left:10px">';
-    h += '<div style="font-family:var(--mono);font-size:13px;color:' + c + '">' + fp(et[0]) + '</div>';
-    h += '<div style="font-size:11px;color:' + c + '">' + dist + '% de distancia</div></div></div>';
+  horizons.forEach(function(h2) {
+    var bullish = s.totalScore >= 0;
+    var mainTarget = bullish ? h2.upTarget : h2.dnTarget;
+    var mainColor = bullish ? 'var(--green)' : 'var(--red)';
+    var mainLabel = bullish ? 'Escenario alcista' : 'Escenario bajista';
+
+    h += '<div style="border:1px solid ' + h2.color + '33;border-radius:var(--rl);padding:14px;margin-bottom:12px;background:var(--bg-card)">';
+
+    // Header del horizonte
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
+    h += '<div style="font-size:22px">' + h2.icon + '</div>';
+    h += '<div>';
+    h += '<div style="font-size:14px;font-weight:700;color:' + h2.color + '">' + h2.label + ' <span style="font-size:11px;font-weight:400;color:var(--text-t)">(' + h2.period + ')</span></div>';
+    h += '<div style="font-size:11px;color:var(--text-t)">' + h2.desc + '</div>';
+    h += '</div></div>';
+
+    // Grid de precios
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">';
+
+    // Precio actual
+    h += '<div style="padding:10px;border-radius:var(--r);background:var(--bg-hover);border:1px solid var(--border);text-align:center">';
+    h += '<div style="font-size:9px;color:var(--text-t);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Precio actual</div>';
+    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text)">' + fp(cur) + '</div>';
+    h += '<div style="font-size:9px;color:var(--text-t);margin-top:2px">Punto de partida</div></div>';
+
+    // Objetivo alcista
+    h += '<div style="padding:10px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);text-align:center">';
+    h += '<div style="font-size:9px;color:var(--text-t);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">🎯 Si sube</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green)">' + fp(h2.upTarget) + '</div>';
+    h += '<div style="font-size:11px;color:var(--green);margin-top:2px">' + pp(h2.upTarget, cur) + '</div></div>';
+
+    // Objetivo bajista
+    h += '<div style="padding:10px;border-radius:var(--r);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);text-align:center">';
+    h += '<div style="font-size:9px;color:var(--text-t);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">⚠️ Si cae</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red)">' + fp(h2.dnTarget) + '</div>';
+    h += '<div style="font-size:11px;color:var(--red);margin-top:2px">' + pp(h2.dnTarget, cur) + '</div></div>';
+
+    h += '</div>';
+
+    // Niveles clave de referencia
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
+    if (h2.fibTarget) {
+      var fabv = h2.fibTarget > cur;
+      h += '<div style="padding:8px;border-radius:var(--r);border:1px solid var(--border);background:rgba(139,92,246,0.08)">';
+      h += '<div style="font-size:10px;color:#8b5cf6;font-weight:600">🌀 Fibonacci relevante</div>';
+      h += '<div style="font-family:var(--mono);font-size:13px;color:' + (fabv?'var(--red)':'var(--green)') + '">' + fp(h2.fibTarget) + ' <span style="font-size:10px">' + pp(h2.fibTarget,cur) + '</span></div>';
+      h += '<div style="font-size:10px;color:var(--text-t)">' + (fabv ? 'Resistencia Fibonacci — zona donde puede frenar' : 'Soporte Fibonacci — zona donde puede rebotar') + '</div></div>';
+    }
+    if (h2.emaTarget) {
+      var eabv = h2.emaTarget > cur;
+      h += '<div style="padding:8px;border-radius:var(--r);border:1px solid var(--border);background:rgba(59,130,246,0.08)">';
+      h += '<div style="font-size:10px;color:#3b82f6;font-weight:600">📈 EMA objetivo</div>';
+      h += '<div style="font-family:var(--mono);font-size:13px;color:' + (eabv?'var(--red)':'var(--green)') + '">' + fp(h2.emaTarget) + ' <span style="font-size:10px">' + pp(h2.emaTarget,cur) + '</span></div>';
+      h += '<div style="font-size:10px;color:var(--text-t)">' + (eabv ? 'Actúa como imán/resistencia desde abajo' : 'Actúa como imán/soporte desde arriba') + '</div></div>';
+    }
+    h += '</div>';
+
+    // Explicaciones de por qué
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    h += '<div style="padding:8px;border-radius:var(--r);background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15)">';
+    h += '<div style="font-size:10px;color:var(--green);font-weight:600;margin-bottom:4px">¿Por qué puede subir?</div>';
+    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + h2.whyUp + '</div></div>';
+    h += '<div style="padding:8px;border-radius:var(--r);background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15)">';
+    h += '<div style="font-size:10px;color:var(--red);font-weight:600;margin-bottom:4px">¿Por qué puede caer?</div>';
+    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + h2.whyDown + '</div></div>';
+    h += '</div>';
+
+    // Métodos usados
+    h += '<div style="margin-top:10px;padding:6px 10px;border-radius:var(--r);background:var(--bg-hover);font-size:10px;color:var(--text-t)">Métodos: ' + h2.method + ' · ATR actual: ' + fp(atr) + ' (' + (ind.atrPct||'—') + '%)</div>';
+
+    h += '</div>';
   });
-  h += '</div></div>';
+
+  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:6px;border-top:1px solid var(--border);margin-top:4px">⚠️ Los precios objetivo son estimaciones técnicas, no garantías. Factores externos (noticias, regulaciones, macro) pueden alterar estos rangos significativamente.</div>';
   h += '</div>';
 
   // ── 8. TARGETS Y S/R ──────────────────────────────────────────────────────
@@ -1107,7 +1139,7 @@ function renderNewsMarketSummary(news) {
 function renderNewsList(news, filter) {
   const el = document.getElementById('news-list');
   if (!el) return;
-  const filtered = filter === 'all' ? news : news.filter(n => (n.mercadosAfectados||[]).includes(filter));
+  const filtered = filter === 'all' ? news : news.filter(n => n.categoria === filter || (n.mercadosAfectados||[]).includes(filter));
   if (!filtered.length) {
     el.innerHTML = '<p class="empty-state">No hay noticias para este mercado.</p>';
     return;
@@ -1125,7 +1157,12 @@ function renderNewsList(news, filter) {
         <div class="news-title">${esc(n.titulo||'')}</div>
         <div class="impact-badge" style="color:${ic};border-color:${ic};background:${bg}">${ii.charAt(0).toUpperCase()+ii.slice(1)}</div>
       </div>
-      <div class="news-meta"><span class="news-source">${esc(n.fuente||'')}</span><span class="news-horizon">${hl}</span>${n.fecha ? '<span style="font-size:10px;color:var(--text-t);padding:2px 7px;background:var(--bg-hover);border-radius:99px;border:1px solid var(--border)">📅 ' + esc(n.fecha) + '</span>' : ''}</div>
+      <div class="news-meta">
+        <span class="news-source">${esc(n.fuente||'')}</span>
+        ${n.categoria==='crypto'?'<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(249,115,22,0.15);color:#f97316;border:1px solid rgba(249,115,22,0.3)">₿ Cripto</span>':n.categoria==='acciones'?'<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(59,130,246,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3)">📊 Bolsa</span>':''}
+        <span class="news-horizon">${hl}</span>
+        ${n.fecha?'<span style="font-size:10px;color:var(--text-t);padding:2px 7px;background:var(--bg-hover);border-radius:99px;border:1px solid var(--border)">📅 '+esc(n.fecha)+'</span>':''}
+      </div>
       <div class="news-summary">${esc(n.resumen||'')}</div>
       ${n.activos?.length?`<div class="news-assets">${n.activos.map(a=>`<span class="asset-tag" style="color:${ic};border-color:${ic};background:${bg}">${esc(a)}</span>`).join('')}</div>`:''}
       ${n.mercadosAfectados?.length?`<div class="news-markets">${n.mercadosAfectados.map(m=>`<span class="market-tag">${esc(m)}</span>`).join('')}</div>`:''}

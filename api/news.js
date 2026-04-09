@@ -1,7 +1,7 @@
 /**
- * api/news.js — v5
- * Noticias financieras reales del día via RSS + análisis de Claude Haiku
- * Devuelve 10+ noticias con fecha, fuente e impacto
+ * api/news.js — v6
+ * Noticias SOLO de cripto y bolsa/acciones
+ * 15+ fuentes RSS especializadas, ordenadas por fecha, analizadas por Claude
  */
 
 module.exports = async function handler(req, res) {
@@ -17,27 +17,35 @@ module.exports = async function handler(req, res) {
     const rawArticles = await fetchAllNews();
     const today = new Date().toLocaleDateString('es-AR', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
 
-    const prompt = `Hoy es ${today}. Analizá estas noticias financieras REALES obtenidas en este momento:
+    const prompt = `Hoy es ${today}. Analizá estas noticias REALES obtenidas ahora mismo de fuentes especializadas en cripto y bolsa:
 
 ${rawArticles.map((a,i) => `${i+1}. [${a.source}] [${a.dateStr}] ${a.title}${a.description ? ' — ' + a.description.slice(0,120) : ''}`).join('\n')}
 
-Seleccioná las 10 más relevantes para inversores y analizá su impacto real. Respondé ÚNICAMENTE con JSON array (sin markdown):
+Seleccioná las 12 más relevantes para inversores en cripto y acciones. Descartá cualquier noticia que NO sea de criptomonedas o mercado de acciones/bolsa.
+
+Para cada noticia analizá:
+- Impacto concreto en precios (positivo/negativo/mixto)
+- Qué activos específicos afecta
+- Qué esperar en los próximos días
+
+Respondé ÚNICAMENTE con JSON array válido (sin markdown):
 [
   {
     "titulo": "título conciso en español (máx 90 chars)",
-    "fuente": "nombre de la fuente",
-    "fecha": "fecha en español (ej: hoy, ayer, 8 de abril)",
+    "fuente": "nombre real de la fuente",
+    "fecha": "cuándo (ej: hace 2h, hoy, ayer, 9 de abril)",
+    "categoria": "crypto" | "acciones",
     "impacto": "positivo|negativo|mixto|neutro",
     "magnitud": 1-10,
-    "mercadosAfectados": ["acciones","crypto","bonos","commodities","forex","latam"],
-    "resumen": "Dos oraciones: qué ocurrió y qué impacto concreto se espera en precios.",
-    "activos": ["BTC","S&P500","ORO","USD"],
+    "mercadosAfectados": ["acciones","crypto"],
+    "resumen": "Dos oraciones: qué pasó y qué impacto esperás en precios específicamente.",
+    "activos": ["BTC","ETH","AAPL","S&P500"],
     "horizonte": "inmediato|corto|mediano"
   }
 ]`;
 
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25000);
+    setTimeout(() => ctrl.abort(), 25000);
 
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -48,12 +56,11 @@ Seleccioná las 10 más relevantes para inversores y analizá su impacto real. R
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 3000,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: ctrl.signal,
     });
-    clearTimeout(timer);
 
     if (!resp.ok) {
       const err = await resp.text();
@@ -79,60 +86,64 @@ Seleccioná las 10 más relevantes para inversores y analizá su impacto real. R
   }
 };
 
+// Fuentes especializadas en CRIPTO y BOLSA únicamente
 async function fetchAllNews() {
   const feeds = [
-    { url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories',    source: 'MarketWatch' },
-    { url: 'https://feeds.content.dowjones.io/public/rss/mw_marketpulse',   source: 'MarketWatch' },
-    { url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html',          source: 'CNBC' },
-    { url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html',           source: 'CNBC Markets' },
-    { url: 'https://feeds.reuters.com/reuters/businessNews',                  source: 'Reuters' },
-    { url: 'https://cryptopanic.com/news/rss/',                               source: 'CryptoPanic' },
-    { url: 'https://finance.yahoo.com/news/rssindex',                         source: 'Yahoo Finance' },
-    { url: 'https://www.investing.com/rss/news_25.rss',                       source: 'Investing.com' },
-    { url: 'https://www.investing.com/rss/news_301.rss',                      source: 'Investing.com Crypto' },
-    { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',                 source: 'CoinDesk' },
-    { url: 'https://cointelegraph.com/rss',                                   source: 'CoinTelegraph' },
-    { url: 'https://seekingalpha.com/market_currents.xml',                    source: 'Seeking Alpha' },
+    // ── CRYPTO ──
+    { url: 'https://cointelegraph.com/rss',                                   source: 'CoinTelegraph',   cat: 'crypto' },
+    { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',                 source: 'CoinDesk',        cat: 'crypto' },
+    { url: 'https://cryptopanic.com/news/rss/',                               source: 'CryptoPanic',     cat: 'crypto' },
+    { url: 'https://decrypt.co/feed',                                         source: 'Decrypt',         cat: 'crypto' },
+    { url: 'https://bitcoinmagazine.com/.rss/full/',                          source: 'Bitcoin Magazine', cat: 'crypto' },
+    { url: 'https://thedefiant.io/feed',                                      source: 'The Defiant',     cat: 'crypto' },
+    { url: 'https://cryptobriefing.com/feed/',                                source: 'Crypto Briefing', cat: 'crypto' },
+    // ── BOLSA / ACCIONES ──
+    { url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories',     source: 'MarketWatch',     cat: 'acciones' },
+    { url: 'https://feeds.content.dowjones.io/public/rss/mw_marketpulse',    source: 'MarketWatch',     cat: 'acciones' },
+    { url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html',          source: 'CNBC',            cat: 'acciones' },
+    { url: 'https://www.cnbc.com/id/20910258/device/rss/rss.html',           source: 'CNBC Markets',    cat: 'acciones' },
+    { url: 'https://feeds.reuters.com/reuters/businessNews',                  source: 'Reuters Business',cat: 'acciones' },
+    { url: 'https://www.investing.com/rss/news_25.rss',                       source: 'Investing.com',   cat: 'acciones' },
+    { url: 'https://www.investing.com/rss/news_301.rss',                      source: 'Investing Crypto',cat: 'crypto' },
+    { url: 'https://finance.yahoo.com/news/rssindex',                         source: 'Yahoo Finance',   cat: 'acciones' },
+    { url: 'https://seekingalpha.com/market_currents.xml',                    source: 'Seeking Alpha',   cat: 'acciones' },
+    { url: 'https://www.zerohedge.com/fullrss2.xml',                          source: 'ZeroHedge',       cat: 'acciones' },
   ];
 
-  const results = await Promise.allSettled(feeds.map(f => fetchRSS(f.url, f.source)));
-
+  const results = await Promise.allSettled(feeds.map(f => fetchRSS(f.url, f.source, f.cat)));
   const articles = [];
-  const seenTitles = new Set();
+  const seen = new Set();
 
   for (const r of results) {
     if (r.status !== 'fulfilled') continue;
     for (const a of r.value) {
       const key = a.title.toLowerCase().slice(0, 60);
-      if (!seenTitles.has(key) && a.title.length > 15) {
-        seenTitles.add(key);
+      if (!seen.has(key) && a.title.length > 15) {
+        seen.add(key);
         articles.push(a);
       }
     }
   }
 
-  // Sort: articles with dates first (most recent first)
+  // Sort by most recent first
   articles.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-  return articles.slice(0, 20);
+  return articles.slice(0, 25);
 }
 
-async function fetchRSS(url, source) {
+async function fetchRSS(url, source, cat) {
   try {
     const ctrl = new AbortController();
     setTimeout(() => ctrl.abort(), 5000);
     const r = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; FinTrack/1.0)',
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-      },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FinTrack/1.0)', 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
       signal: ctrl.signal,
     });
     if (!r.ok) return [];
     const text = await r.text();
-    const articles = [];
     const items = text.match(/<item[\s\S]*?<\/item>/g) || text.match(/<entry[\s\S]*?<\/entry>/g) || [];
+    const articles = [];
 
-    for (const item of items.slice(0, 7)) {
+    for (const item of items.slice(0, 6)) {
       const title = strip(
         item.match(/<title><!\[CDATA\[([\s\S]*?)\]\]>/)?.[1] ||
         item.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] || ''
@@ -144,27 +155,26 @@ async function fetchRSS(url, source) {
         item.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] || ''
       ).trim().slice(0, 200);
 
-      const pubDateRaw =
-        item.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/)?.[1] ||
-        item.match(/<published[^>]*>([\s\S]*?)<\/published>/)?.[1] ||
-        item.match(/<updated[^>]*>([\s\S]*?)<\/updated>/)?.[1] || '';
+      const pubRaw = item.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/)?.[1] ||
+                     item.match(/<published[^>]*>([\s\S]*?)<\/published>/)?.[1] ||
+                     item.match(/<updated[^>]*>([\s\S]*?)<\/updated>/)?.[1] || '';
 
       let timestamp = 0, dateStr = 'hoy';
-      if (pubDateRaw) {
-        const d = new Date(pubDateRaw.trim());
+      if (pubRaw) {
+        const d = new Date(pubRaw.trim());
         if (!isNaN(d.getTime())) {
           timestamp = d.getTime();
-          const now = Date.now();
-          const diffH = (now - timestamp) / 3600000;
-          if (diffH < 1) dateStr = 'hace menos de 1 hora';
-          else if (diffH < 24) dateStr = 'hace ' + Math.floor(diffH) + 'h';
-          else if (diffH < 48) dateStr = 'ayer';
-          else dateStr = d.toLocaleDateString('es-AR', { day:'numeric', month:'long' });
+          const diffH = (Date.now() - timestamp) / 3600000;
+          if (diffH < 1)        dateStr = 'hace menos de 1 hora';
+          else if (diffH < 2)   dateStr = 'hace 1 hora';
+          else if (diffH < 24)  dateStr = 'hace ' + Math.floor(diffH) + 'h';
+          else if (diffH < 48)  dateStr = 'ayer';
+          else                  dateStr = d.toLocaleDateString('es-AR', { day:'numeric', month:'long' });
         }
       }
 
       if (title && title.length > 10 && title.length < 300) {
-        articles.push({ title, description, source, dateStr, timestamp });
+        articles.push({ title, description, source, cat, dateStr, timestamp });
       }
     }
     return articles;
