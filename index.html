@@ -947,8 +947,37 @@ function buildSignalCard(s) {
     h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + h2.whyDown + '</div></div>';
     h += '</div>';
 
+    // Veredicto de probabilidad
+    var probScore = s.totalScore;
+    var probBull  = Math.min(Math.round(50 + probScore * 4), 85); // 50-85%
+    var probBear  = 100 - probBull;
+    var moreProbUp   = probBull >= probBear;
+    var probDiff     = Math.abs(probBull - probBear);
+    var conviccion   = probDiff > 25 ? 'Alta convicción' : probDiff > 10 ? 'Convicción moderada' : 'Sin dirección clara';
+    var probMainColor = moreProbUp ? 'var(--green)' : 'var(--red)';
+    var probMainLabel = moreProbUp ? '📈 MÁS PROBABLE QUE SUBA' : '📉 MÁS PROBABLE QUE CAIGA';
+    var probMainExp   = moreProbUp
+      ? 'El análisis técnico indica que hay más señales alcistas que bajistas. Esto no garantiza una suba — solo que las probabilidades históricas favorecen ese lado.'
+      : 'El análisis técnico indica que hay más señales bajistas que alcistas. El mercado puede sorprender, pero los indicadores favorecen ese lado.';
+
+    h += '<div style="margin-top:12px;padding:12px;border-radius:var(--r);background:' + probMainColor.replace(')',',0.1)').replace('var(','rgba(').replace('--green','34,197,94').replace('--red','239,68,68') + ';border:2px solid ' + probMainColor.replace(')',',0.4)').replace('var(','rgba(').replace('--green','34,197,94').replace('--red','239,68,68') + '">';
+    h += '<div style="font-size:13px;font-weight:700;color:' + probMainColor + ';margin-bottom:8px">' + probMainLabel + ' — ' + conviccion + '</div>';
+    // Barra de probabilidad
+    h += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--green)">📈 Sube: ' + probBull + '%</span><span style="color:var(--red)">📉 Cae: ' + probBear + '%</span></div>';
+    h += '<div style="height:10px;border-radius:5px;overflow:hidden;display:flex;background:var(--bg-hover)">';
+    h += '<div style="width:' + probBull + '%;background:var(--green);transition:width .5s"></div>';
+    h += '<div style="width:' + probBear + '%;background:var(--red);transition:width .5s"></div>';
+    h += '</div></div>';
+    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + probMainExp + '</div>';
+    // Razón principal
+    var mainReason = moreProbUp
+      ? (s.crossovers && s.crossovers.goldenCross ? 'Golden Cross activo + ' : '') + (s.stage && s.stage.includes('2') ? 'Stage 2 Weinstein (tendencia alcista) + ' : '') + 'Score técnico positivo (' + (s.bullScore||0) + ' alcistas vs ' + (s.bearScore||0) + ' bajistas)'
+      : (s.crossovers && s.crossovers.deathCross  ? 'Death Cross activo + ' : '') + (s.stage && s.stage.includes('4') ? 'Stage 4 Weinstein (tendencia bajista) + ' : '') + 'Score técnico negativo (' + (s.bearScore||0) + ' bajistas vs ' + (s.bullScore||0) + ' alcistas)';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.1)">Razón principal: ' + esc(mainReason) + '</div>';
+    h += '</div>';
+
     // Métodos usados
-    h += '<div style="margin-top:10px;padding:6px 10px;border-radius:var(--r);background:var(--bg-hover);font-size:10px;color:var(--text-t)">Métodos: ' + h2.method + ' · ATR actual: ' + fp(atr) + ' (' + (ind.atrPct||'—') + '%)</div>';
+    h += '<div style="margin-top:8px;padding:6px 10px;border-radius:var(--r);background:var(--bg-hover);font-size:10px;color:var(--text-t)">Métodos: ' + h2.method + ' · ATR actual: ' + fp(atr) + ' (' + (ind.atrPct||'—') + '%)</div>';
 
     h += '</div>';
   });
