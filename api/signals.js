@@ -576,6 +576,14 @@ async function analyzeFull(ticker, typeHint) {
   // ── ESCENARIOS ──
   const scenarios = buildScenarios(cur, totalScore, stage, targets, e50, e200, resistances, supports, macdCur, sigCur, rsiCur);
 
+  // ── PROYECCIONES TÉCNICAS REALES ──
+  const projections = buildProjections({
+    bars, closes, highs, lows, cur, n,
+    e20, e50, e200, ma30, atrCur, fib,
+    high52w, low52w, totalScore, stage, bullScore, bearScore,
+    resistances, supports, bbCur,
+  });
+
   return {
     ticker, assetType, mode:'spot',
     currentPrice:       +cur.toFixed(4),
@@ -615,7 +623,7 @@ async function analyzeFull(ticker, typeHint) {
     resistances: resistances.slice(0,4),
     supports:    supports.slice(0,4),
     signals,
-    action, targets, scenarios,
+    action, targets, scenarios, projections,
     analyzedAt:  new Date().toISOString(),
     barsCount:   n,
   };
@@ -740,4 +748,262 @@ function buildScenarios(cur, score, stage, targets, e50, e200, resistances, supp
       probability: bearProb,
     },
   ];
+}
+
+// ─────────────────────────────────────────────────────────
+// PROYECCIONES TÉCNICAS REALES
+// ─────────────────────────────────────────────────────────
+// Estrategias usadas:
+// 1. Weinstein Stage + Canal de precio (Price Channel)
+//    — Identifica el canal de tendencia real midiendo
+//      la distancia histórica del precio a la MA30
+// 2. Bollinger Bands histórico (ancho promedio)
+//    — Proyecta rangos de expansión realistas basados
+//      en la volatilidad histórica del activo específico
+// 3. Niveles técnicos clave (S/R + Fibonacci)
+//    — Targets naturales donde el precio tiende a frenar
+
+function buildProjections({ bars, closes, highs, lows, cur, n,
+  e20, e50, e200, ma30, atrCur, fib,
+  high52w, low52w, totalScore, stage, bullScore, bearScore,
+  resistances, supports, bbCur }) {
+
+  // ── 1. CANAL DE PRECIO (Price Channel) ──────────────────
+  // Basado en la metodología de Weinstein:
+  // medimos la amplitud real del canal de tendencia
+  // usando los últimos 90 días de datos históricos
+  const lookback90  = closes.slice(Math.max(0, n - 90));
+  const lookback180 = closes.slice(Math.max(0, n - 180));
+  const lookback30  = closes.slice(Math.max(0, n - 30));
+
+  const high90  = Math.max(...highs.slice(Math.max(0, n - 90)));
+  const low90   = Math.min(...lows.slice(Math.max(0, n - 90)));
+  const high180 = Math.max(...highs.slice(Math.max(0, n - 180)));
+  const low180  = Math.min(...lows.slice(Math.max(0, n - 180)));
+
+  // Amplitud del canal como % del precio actual
+  const channelAmp90  = (high90  - low90)  / cur;  // amplitud 3 meses
+  const channelAmp180 = (high180 - low180) / cur;  // amplitud 6 meses
+
+  // Tendencia del canal: pendiente de MA30 en últimos 60 días
+  const ma30_now   = ma30;
+  const ma30_60ago = closes.slice(Math.max(0, n - 60), Math.max(0, n - 57))
+    .reduce((a, b) => a + b, 0) / 3 || ma30;
+  const ma30_slope = (ma30_now - ma30_60ago) / ma30_60ago; // % cambio en 60 días
+
+  // Proyección del canal: MA30 + su tendencia × tiempo
+  const channelCenter30d  = ma30 * (1 + ma30_slope * (30 / 60));
+  const channelCenter90d  = ma30 * (1 + ma30_slope * (90 / 60));
+  const channelCenter180d = ma30 * (1 + ma30_slope * (180 / 60));
+
+  // Límites del canal usando amplitud histórica
+  const chan30_up  = +(channelCenter30d  * (1 + channelAmp90  * 0.5)).toFixed(4);
+  const chan30_dn  = +(channelCenter30d  * (1 - channelAmp90  * 0.5)).toFixed(4);
+  const chan90_up  = +(channelCenter90d  * (1 + channelAmp90  * 0.6)).toFixed(4);
+  const chan90_dn  = +(channelCenter90d  * (1 - channelAmp90  * 0.6)).toFixed(4);
+  const chan180_up = +(channelCenter180d * (1 + channelAmp180 * 0.5)).toFixed(4);
+  const chan180_dn = +(channelCenter180d * (1 - channelAmp180 * 0.5)).toFixed(4);
+
+  // ── 2. BOLLINGER HISTÓRICO ───────────────────────────────
+  // Calculamos el ancho promedio de Bollinger en los últimos
+  // 90 días para entender la volatilidad real del activo
+  // y proyectar rangos estadísticamente plausibles
+
+  // Volatilidad histórica: desv estándar de retornos logarítmicos
+  const returns = [];
+  for (let i = Math.max(1, n - 90); i < n; i++) {
+    if (closes[i] > 0 && closes[i-1] > 0)
+      returns.push(Math.log(closes[i] / closes[i-1]));
+  }
+  const meanRet = returns.reduce((a, b) => a + b, 0) / (returns.length || 1);
+  const variance = returns.map(r => (r - meanRet) ** 2).reduce((a, b) => a + b, 0) / (returns.length || 1);
+  const dailyVolPct = Math.sqrt(variance) * 100; // % diario
+
+  // Bandas de 1σ y 1.5σ para cada horizonte
+  // (1σ = 68% de probabilidad, 1.5σ = 87% de prob)
+  const vol30d_1s  = dailyVolPct * Math.sqrt(30)  / 100 * cur;
+  const vol90d_1s  = dailyVolPct * Math.sqrt(90)  / 100 * cur;
+  const vol180d_1s = dailyVolPct * Math.sqrt(180) / 100 * cur;
+
+  const bb30_up  = +(cur + vol30d_1s  * 1.5).toFixed(4);
+  const bb30_dn  = +(Math.max(cur - vol30d_1s  * 1.5, cur * 0.05)).toFixed(4);
+  const bb90_up  = +(cur + vol90d_1s  * 1.5).toFixed(4);
+  const bb90_dn  = +(Math.max(cur - vol90d_1s  * 1.5, cur * 0.05)).toFixed(4);
+  const bb180_up = +(cur + vol180d_1s * 1.5).toFixed(4);
+  const bb180_dn = +(Math.max(cur - vol180d_1s * 1.5, cur * 0.05)).toFixed(4);
+
+  // ── 3. NIVELES TÉCNICOS (S/R + Fibonacci) ───────────────
+  // Targets naturales donde el precio históricamente frena
+  // Usamos los pivot points ya calculados + Fibonacci
+
+  // Próxima resistencia real por encima del precio
+  const nextRes = resistances.filter(r => r.price > cur).sort((a, b) => a.price - b.price)[0];
+  const nextSup = supports.filter(s => s.price < cur).sort((a, b) => b.price - a.price)[0];
+
+  // Fibonacci: niveles clave relativos al precio
+  const fibAbove = [fib.r_236, fib.r_382, fib.r_500, fib.ext_1618]
+    .filter(v => v && v > cur * 1.01).sort((a, b) => a - b);
+  const fibBelow = [fib.r_618, fib.r_786, fib.r_1000]
+    .filter(v => v && v < cur * 0.99).sort((a, b) => b - a);
+
+  // ── PROBABILIDADES REALES ────────────────────────────────
+  // Calculamos la probabilidad real basada en:
+  // - Score técnico (señales alcistas vs bajistas)
+  // - Stage de Weinstein (contexto de mercado)
+  // - Posición relativa en rango 52 semanas
+  // - Tendencia de MA30
+
+  // Base: 50% neutral
+  let rawBullProb = 50;
+
+  // Score técnico: cada punto vale ~3%
+  rawBullProb += totalScore * 3;
+
+  // Stage de Weinstein: ajuste fundamental
+  if (stage === 2) rawBullProb += 15;      // Stage 2: alcista
+  else if (stage === 4) rawBullProb -= 15; // Stage 4: bajista
+  else if (stage === 3) rawBullProb -= 8;  // Stage 3: distribución
+  // Stage 1: neutral, no ajusta
+
+  // Tendencia MA30
+  if (ma30_slope > 0.05) rawBullProb += 8;       // MA30 subiendo fuerte
+  else if (ma30_slope > 0.01) rawBullProb += 4;  // MA30 subiendo leve
+  else if (ma30_slope < -0.05) rawBullProb -= 8; // MA30 bajando fuerte
+  else if (ma30_slope < -0.01) rawBullProb -= 4; // MA30 bajando leve
+
+  // Posición en rango 52s (momentum de largo plazo)
+  const range52 = high52w - low52w;
+  const posInRange = range52 > 0 ? (cur - low52w) / range52 : 0.5;
+  if (posInRange > 0.7) rawBullProb += 5;       // En parte alta del rango
+  else if (posInRange < 0.3) rawBullProb -= 5;  // En parte baja del rango
+
+  // Clamp entre 20% y 80% (nunca decimos 95% de certeza)
+  const bullProb = Math.round(Math.max(20, Math.min(80, rawBullProb)));
+  const bearProb = 100 - bullProb;
+
+  // Convicción basada en diferencia
+  const diff = Math.abs(bullProb - bearProb);
+  const conviction = diff >= 30 ? 'Alta' : diff >= 15 ? 'Moderada' : 'Baja';
+  const moreProb    = bullProb >= bearProb ? 'alcista' : 'bajista';
+
+  // Razones para la probabilidad
+  const probReasons = [];
+  if (stage === 2) probReasons.push('Stage 2 Weinstein activo — tendencia alcista confirmada por MA30');
+  if (stage === 4) probReasons.push('Stage 4 Weinstein — MA30 bajando con precio abajo');
+  if (stage === 3) probReasons.push('Stage 3 — distribución, MA30 aplanando');
+  if (totalScore >= 4) probReasons.push('Score técnico positivo: ' + bullScore + ' indicadores alcistas vs ' + bearScore + ' bajistas');
+  if (totalScore <= -4) probReasons.push('Score técnico negativo: ' + bearScore + ' indicadores bajistas vs ' + bullScore + ' alcistas');
+  if (ma30_slope > 0.02) probReasons.push('MA30 con pendiente alcista — fondo de mercado favorable');
+  if (ma30_slope < -0.02) probReasons.push('MA30 con pendiente bajista — fondo de mercado desfavorable');
+  if (posInRange > 0.7) probReasons.push('Precio en zona alta de su rango anual — momentum de largo plazo positivo');
+  if (posInRange < 0.3) probReasons.push('Precio en zona baja del rango anual — posible acumulación o riesgo de caída');
+
+  // ── CONSTRUIR RESPUESTA POR HORIZONTE ───────────────────
+
+  return {
+    bullProb, bearProb, conviction, moreProb, probReasons,
+    dailyVolPct: +dailyVolPct.toFixed(2),
+    ma30Slope: +(ma30_slope * 100).toFixed(2), // % por 60 días
+    posInRange52: +(posInRange * 100).toFixed(1),
+
+    horizons: [
+      {
+        id: '1m',
+        label: '1 Mes',
+        period: '~30 días',
+        icon: '📅',
+        color: '#3b82f6',
+        desc: 'Mediano plazo corto. Refleja el próximo movimiento significativo.',
+
+        // Método 1: Canal de precio
+        chan_up: chan30_up,
+        chan_dn: chan30_dn,
+        chan_center: +channelCenter30d.toFixed(4),
+
+        // Método 2: Bollinger / Volatilidad histórica
+        vol_up: bb30_up,
+        vol_dn: bb30_dn,
+        vol_pct: +(dailyVolPct * Math.sqrt(30)).toFixed(1),
+
+        // Método 3: Nivel técnico más cercano
+        tech_up: nextRes ? +nextRes.price.toFixed(4) : (fibAbove[0] ? +fibAbove[0].toFixed(4) : null),
+        tech_dn: nextSup ? +nextSup.price.toFixed(4) : (fibBelow[0] ? +fibBelow[0].toFixed(4) : null),
+        tech_up_label: nextRes ? 'Resistencia pivot (' + nextRes.touches + '× tocada)' : 'Fibonacci ' + (fibAbove[0] ? fibAbove[0].toFixed(0) : ''),
+        tech_dn_label: nextSup ? 'Soporte pivot (' + nextSup.touches + '× tocado)' : 'Fibonacci',
+
+        // Promedio de los 3 métodos
+        consensus_up: +((chan30_up + bb30_up + (nextRes?.price || chan30_up)) / 3).toFixed(4),
+        consensus_dn: +((chan30_dn + bb30_dn + (nextSup?.price || chan30_dn)) / 3).toFixed(4),
+
+        strategy_notes: [
+          'Canal de precio (Weinstein): basado en amplitud histórica del canal en 90 días (' + (channelAmp90 * 100).toFixed(1) + '% de amplitud real)',
+          'Volatilidad histórica: desv estándar de retornos log de 90 días × √30 = ' + (dailyVolPct * Math.sqrt(30)).toFixed(1) + '% de rango esperado',
+          nextRes ? 'Próxima resistencia real en $' + nextRes.price + ' (' + nextRes.touches + ' contactos históricos en 90 días)' : 'Sin resistencia clara en datos recientes',
+        ],
+      },
+      {
+        id: '3m',
+        label: '3 Meses',
+        period: '~90 días',
+        icon: '📆',
+        color: '#8b5cf6',
+        desc: 'Mediano plazo. Un trimestre completo captura un ciclo de mercado.',
+
+        chan_up: chan90_up,
+        chan_dn: chan90_dn,
+        chan_center: +channelCenter90d.toFixed(4),
+
+        vol_up: bb90_up,
+        vol_dn: bb90_dn,
+        vol_pct: +(dailyVolPct * Math.sqrt(90)).toFixed(1),
+
+        tech_up: e50 ? +e50.toFixed(4) : (fibAbove[1] || fibAbove[0] ? +(fibAbove[1] || fibAbove[0]).toFixed(4) : null),
+        tech_dn: fibBelow[0] ? +fibBelow[0].toFixed(4) : null,
+        tech_up_label: e50 ? (cur < e50 ? 'EMA50 como resistencia dinámica' : 'EMA50 como soporte dinámica — objetivo si hay pullback') : 'Fibonacci 38.2%',
+        tech_dn_label: 'Fibonacci 61.8% — retroceso dorado',
+
+        consensus_up: +((chan90_up + bb90_up + (e50 > cur ? e50 : chan90_up)) / 3).toFixed(4),
+        consensus_dn: +((chan90_dn + bb90_dn + (fibBelow[0] || chan90_dn)) / 3).toFixed(4),
+
+        strategy_notes: [
+          'Canal de precio: amplitud de 90 días (' + (channelAmp90 * 100).toFixed(1) + '%) proyectada en la tendencia actual de MA30',
+          'Volatilidad histórica × √90 = ' + (dailyVolPct * Math.sqrt(90)).toFixed(1) + '% de rango esperado en 3 meses',
+          'EMA50 en $' + (e50 ? e50.toFixed(2) : '—') + ' es el imán institucional de mediano plazo más relevante',
+          'Fibonacci 61.8% ($' + fib.r_618 + ') es el soporte/resistencia más importante en correcciones de mediano plazo',
+        ],
+      },
+      {
+        id: '6-12m',
+        label: '6-12 Meses',
+        period: '~180-365 días',
+        icon: '🗓️',
+        color: '#f97316',
+        desc: 'Largo plazo. Captura el ciclo completo de tendencia primaria.',
+
+        chan_up: chan180_up,
+        chan_dn: chan180_dn,
+        chan_center: +channelCenter180d.toFixed(4),
+
+        vol_up: bb180_up,
+        vol_dn: bb180_dn,
+        vol_pct: +(dailyVolPct * Math.sqrt(180)).toFixed(1),
+
+        tech_up: fib.ext_1618 ? +fib.ext_1618.toFixed(4) : high52w,
+        tech_dn: e200 ? +e200.toFixed(4) : (fib.r_786 ? +fib.r_786.toFixed(4) : null),
+        tech_up_label: 'Extensión Fibonacci 161.8% — objetivo en tendencias alcistas fuertes',
+        tech_dn_label: e200 ? 'EMA200 — soporte de largo plazo fundamental' : 'Fibonacci 78.6% — soporte profundo',
+
+        consensus_up: +((chan180_up + bb180_up + (fib.ext_1618 || chan180_up)) / 3).toFixed(4),
+        consensus_dn: +((chan180_dn + bb180_dn + (e200 || fib.r_786 || chan180_dn)) / 3).toFixed(4),
+
+        strategy_notes: [
+          'Canal de precio: amplitud de 180 días (' + (channelAmp180 * 100).toFixed(1) + '%) sobre tendencia de MA30 a 6 meses',
+          'Volatilidad histórica × √180 = ' + (dailyVolPct * Math.sqrt(180)).toFixed(1) + '% de rango esperado en 6 meses',
+          'Extensión Fibonacci 161.8% ($' + (fib.ext_1618 || '—') + ') es el objetivo clásico en mercados alcistas (Stage 2 Weinstein)',
+          'EMA200 ($' + (e200 ? e200.toFixed(2) : '—') + ') es el soporte/resistencia más importante de largo plazo',
+          'Weinstein Stage ' + (stage === 2 ? '2 activo — tendencia de fondo alcista favorece el escenario de suba' : stage === 4 ? '4 activo — tendencia de fondo bajista domina' : stage + ' — esperar definición'),
+        ],
+      },
+    ],
+  };
 }

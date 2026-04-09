@@ -833,156 +833,105 @@ function buildSignalCard(s) {
   }
 
   // ── 7. PROYECCIONES DE PRECIO — MEDIANO Y LARGO PLAZO ──────────────────────
+  var proj = s.projections || {};
+  var ph = proj.horizons || [];
+  var bullP = proj.bullProb || 50;
+  var bearP = proj.bearProb || 50;
+  var conv  = proj.conviction || 'Baja';
+  var moreP = proj.moreProb || 'neutral';
+
   h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
   h += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">📅 Proyecciones de precio — Mediano y Largo Plazo</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:16px">Estimaciones basadas en tres estrategias técnicas independientes. Cuando varias coinciden en una zona, esa zona tiene más relevancia. <b>Son probabilidades, no certezas.</b></div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:4px">Calculadas con 3 estrategias técnicas independientes usando datos históricos reales de los últimos 365 días. Las proyecciones se basan en el canal de precio (Weinstein), la volatilidad histórica real del activo y los niveles técnicos clave.</div>';
+  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:14px">Vol. diaria histórica: <b>' + (proj.dailyVolPct||'—') + '%</b> · Pendiente MA30 (60d): <b>' + (proj.ma30Slope > 0 ? '+' : '') + (proj.ma30Slope||0) + '%</b> · Posición en rango anual: <b>' + (proj.posInRange52||50) + '%</b></div>';
 
-  var atr = ind.atr || cur * 0.02;
+  // Probabilidad global
+  var probC = bullP >= bearP ? 'var(--green)' : 'var(--red)';
+  var probLbl = bullP >= bearP ? '📈 MÁS PROBABLE QUE SUBA' : '📉 MÁS PROBABLE QUE CAIGA';
+  h += '<div style="background:' + (bullP>=bearP?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)') + ';border:2px solid ' + (bullP>=bearP?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';border-radius:var(--r);padding:14px;margin-bottom:14px">';
+  h += '<div style="font-size:14px;font-weight:700;color:' + probC + ';margin-bottom:8px">' + probLbl + ' <span style="font-size:11px;font-weight:400;color:var(--text-t)">— Convicción ' + esc(conv) + '</span></div>';
+  h += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:var(--green);font-weight:600">📈 Probabilidad alcista: ' + bullP + '%</span><span style="color:var(--red);font-weight:600">📉 Probabilidad bajista: ' + bearP + '%</span></div>';
+  h += '<div style="height:12px;border-radius:6px;overflow:hidden;display:flex"><div style="width:' + bullP + '%;background:var(--green)"></div><div style="width:' + bearP + '%;background:var(--red)"></div></div></div>';
+  h += '<div style="display:flex;flex-direction:column;gap:4px">';
+  (proj.probReasons||[]).forEach(function(r){ h += '<div style="font-size:11px;color:var(--text-s);display:flex;gap:6px"><span style="color:' + probC + ';flex-shrink:0">›</span><span>' + esc(r) + '</span></div>'; });
+  h += '</div></div>';
 
-  // ── TABLA HORIZONTE DE TIEMPO ──────────────────────────────────────────────
-  // Calculamos targets por horizonte usando los 3 métodos
-  var horizons = [
-    {
-      label: '1 mes', period: '~30 días',
-      icon: '📅', color: '#3b82f6',
-      desc: 'Corto-mediano plazo. Movimiento ya observable en semanas.',
-      upTarget: +(cur + atr * 4).toFixed(4),
-      dnTarget: +(cur - atr * 4).toFixed(4),
-      fibTarget: fib.r_236 > cur ? fib.r_236 : (fib.r_786 < cur ? fib.r_786 : null),
-      emaTarget: ind.ema20,
-      method: 'ATR x4 · Fib 23.6% · EMA20',
-      whyUp: 'Un movimiento de 4× el ATR diario es normal en 30 días. El Fibonacci 23.6% es el primer objetivo en rallies. La EMA20 actúa como imán de corto plazo.',
-      whyDown: 'Una corrección de 4× ATR en 30 días es estadísticamente esperable. El Fib 23.6% sería el primer soporte a reconquistar.',
-    },
-    {
-      label: '3 meses', period: '~90 días',
-      icon: '📆', color: '#8b5cf6',
-      desc: 'Mediano plazo. Refleja la tendencia de un trimestre completo.',
-      upTarget: +(cur + atr * 8).toFixed(4),
-      dnTarget: +(cur - atr * 8).toFixed(4),
-      fibTarget: fib.r_382 > cur ? fib.r_382 : (fib.r_618 < cur ? fib.r_618 : null),
-      emaTarget: ind.ema50,
-      method: 'ATR x8 · Fib 38.2% · EMA50',
-      whyUp: 'En 90 días un activo puede moverse 8× su ATR diario de forma normal. El Fib 38.2% es el objetivo más común en tendencias alcistas. La EMA50 es el imán institucional.',
-      whyDown: 'Una corrección a Fib 38.2% o 61.8% es el escenario bajista típico de mediano plazo. La EMA50 como soporte es clave.',
-    },
-    {
-      label: '6-12 meses', period: '~180-365 días',
-      icon: '🗓️', color: '#f97316',
-      desc: 'Largo plazo. Captura ciclos completos de mercado.',
-      upTarget: +(fib.ext_1618 || cur * 1.3).toFixed(4),
-      dnTarget: +(fib.r_618 || cur * 0.7).toFixed(4),
-      fibTarget: fib.ext_1618,
-      emaTarget: ind.ema200,
-      method: 'Fib Ext 161.8% · ATR x15 · EMA200',
-      whyUp: 'La extensión Fibonacci 161.8% es el objetivo clásico en mercados alcistas. La EMA200 es el imán de largo plazo más poderoso. Aplica en Stage 2 (Weinstein).',
-      whyDown: 'El Fib 61.8% (retroceso dorado) es el soporte típico en correcciones prolongadas. La EMA200 como soporte es señal de mercado alcista mantenido.',
-    },
-  ];
+  // Cada horizonte
+  ph.forEach(function(hz) {
+    var bullishDir = bullP >= bearP;
+    var mainUp = hz.consensus_up;
+    var mainDn = hz.consensus_dn;
+    var probForThisDir = bullishDir ? bullP : bearP;
+    var oppProb = 100 - probForThisDir;
 
-  horizons.forEach(function(h2) {
-    var bullish = s.totalScore >= 0;
-    var mainTarget = bullish ? h2.upTarget : h2.dnTarget;
-    var mainColor = bullish ? 'var(--green)' : 'var(--red)';
-    var mainLabel = bullish ? 'Escenario alcista' : 'Escenario bajista';
+    h += '<div style="border:1px solid ' + hz.color + '44;border-radius:var(--rl);padding:14px;margin-bottom:12px;background:var(--bg-card)">';
 
-    h += '<div style="border:1px solid ' + h2.color + '33;border-radius:var(--rl);padding:14px;margin-bottom:12px;background:var(--bg-card)">';
+    // Header
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+    h += '<div style="font-size:24px">' + hz.icon + '</div>';
+    h += '<div style="flex:1"><div style="font-size:15px;font-weight:700;color:' + hz.color + '">' + hz.label + ' <span style="font-size:11px;font-weight:400;color:var(--text-t)">(' + hz.period + ')</span></div>';
+    h += '<div style="font-size:11px;color:var(--text-t)">' + hz.desc + '</div></div>';
+    // Mini probability chip
+    h += '<div style="padding:4px 12px;border-radius:99px;background:' + (bullishDir?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)') + ';border:1px solid ' + (bullishDir?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';font-size:11px;font-weight:600;color:' + (bullishDir?'var(--green)':'var(--red)') + '">' + (bullishDir?'↑':'↓') + ' ' + probForThisDir + '%</div>';
+    h += '</div>';
 
-    // Header del horizonte
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
-    h += '<div style="font-size:22px">' + h2.icon + '</div>';
-    h += '<div>';
-    h += '<div style="font-size:14px;font-weight:700;color:' + h2.color + '">' + h2.label + ' <span style="font-size:11px;font-weight:400;color:var(--text-t)">(' + h2.period + ')</span></div>';
-    h += '<div style="font-size:11px;color:var(--text-t)">' + h2.desc + '</div>';
+    // 3 precios principales: baja / actual / sube
+    h += '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;margin-bottom:14px">';
+    // Downside
+    h += '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:var(--r);padding:12px;text-align:center">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">⚠️ Si cae</div>';
+    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--red)">' + fp(mainDn) + '</div>';
+    h += '<div style="font-size:11px;color:var(--red);margin-top:2px">' + pp(mainDn,cur) + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Prob: ' + oppProb + '%</div></div>';
+    // Current
+    h += '<div style="text-align:center;padding:8px"><div style="font-size:9px;color:var(--text-t)">Hoy</div><div style="font-family:var(--mono);font-size:12px;color:var(--text-s)">' + fp(cur) + '</div></div>';
+    // Upside
+    h += '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:var(--r);padding:12px;text-align:center">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">🎯 Si sube</div>';
+    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">' + fp(mainUp) + '</div>';
+    h += '<div style="font-size:11px;color:var(--green);margin-top:2px">' + pp(mainUp,cur) + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Prob: ' + probForThisDir + '%</div></div>';
+    h += '</div>';
+
+    // Detalle de los 3 métodos
+    h += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">Detalle por estrategia</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">';
+
+    // Método 1: Canal de precio
+    h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:8px">';
+    h += '<div style="font-size:10px;font-weight:600;color:#8b5cf6;margin-bottom:4px">📊 Canal Weinstein</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:6px">Amplitud histórica del canal de tendencia sobre MA30</div>';
+    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--green)">↑ ' + fp(hz.chan_up) + '</span></div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Centro: ' + fp(hz.chan_center) + '</div>';
+    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--red)">↓ ' + fp(hz.chan_dn) + '</span></div></div>';
+
+    // Método 2: Volatilidad histórica
+    h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:8px">';
+    h += '<div style="font-size:10px;font-weight:600;color:#3b82f6;margin-bottom:4px">📐 Volatilidad (1.5σ)</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:6px">Desv. estándar histórica × √días (87% de probabilidad)</div>';
+    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--green)">↑ ' + fp(hz.vol_up) + '</span></div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Rango: ±' + hz.vol_pct + '%</div>';
+    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--red)">↓ ' + fp(hz.vol_dn) + '</span></div></div>';
+
+    // Método 3: Niveles técnicos
+    h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:8px">';
+    h += '<div style="font-size:10px;font-weight:600;color:#f97316;margin-bottom:4px">📍 Niveles técnicos</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:6px">Pivot S/R + Fibonacci calculados con datos reales</div>';
+    if (hz.tech_up) { h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--green)">↑ ' + fp(hz.tech_up) + '</span></div>'; h += '<div style="font-size:9px;color:var(--text-t)">' + esc(hz.tech_up_label||'') + '</div>'; }
+    if (hz.tech_dn) { h += '<div style="font-size:11px;font-family:var(--mono);margin-top:4px"><span style="color:var(--red)">↓ ' + fp(hz.tech_dn) + '</span></div>'; h += '<div style="font-size:9px;color:var(--text-t)">' + esc(hz.tech_dn_label||'') + '</div>'; }
     h += '</div></div>';
 
-    // Grid de precios
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">';
-
-    // Precio actual
-    h += '<div style="padding:10px;border-radius:var(--r);background:var(--bg-hover);border:1px solid var(--border);text-align:center">';
-    h += '<div style="font-size:9px;color:var(--text-t);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Precio actual</div>';
-    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text)">' + fp(cur) + '</div>';
-    h += '<div style="font-size:9px;color:var(--text-t);margin-top:2px">Punto de partida</div></div>';
-
-    // Objetivo alcista
-    h += '<div style="padding:10px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);text-align:center">';
-    h += '<div style="font-size:9px;color:var(--text-t);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">🎯 Si sube</div>';
-    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green)">' + fp(h2.upTarget) + '</div>';
-    h += '<div style="font-size:11px;color:var(--green);margin-top:2px">' + pp(h2.upTarget, cur) + '</div></div>';
-
-    // Objetivo bajista
-    h += '<div style="padding:10px;border-radius:var(--r);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);text-align:center">';
-    h += '<div style="font-size:9px;color:var(--text-t);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">⚠️ Si cae</div>';
-    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red)">' + fp(h2.dnTarget) + '</div>';
-    h += '<div style="font-size:11px;color:var(--red);margin-top:2px">' + pp(h2.dnTarget, cur) + '</div></div>';
-
+    // Notas de estrategia
+    h += '<div style="background:var(--bg-hover);border-radius:var(--r);padding:8px">';
+    h += '<div style="font-size:10px;color:var(--text-t);font-weight:600;margin-bottom:4px">📝 Base técnica</div>';
+    (hz.strategy_notes||[]).forEach(function(note) {
+      h += '<div style="font-size:10px;color:var(--text-t);display:flex;gap:5px;margin-bottom:2px"><span>·</span><span>' + esc(note) + '</span></div>';
+    });
     h += '</div>';
-
-    // Niveles clave de referencia
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">';
-    if (h2.fibTarget) {
-      var fabv = h2.fibTarget > cur;
-      h += '<div style="padding:8px;border-radius:var(--r);border:1px solid var(--border);background:rgba(139,92,246,0.08)">';
-      h += '<div style="font-size:10px;color:#8b5cf6;font-weight:600">🌀 Fibonacci relevante</div>';
-      h += '<div style="font-family:var(--mono);font-size:13px;color:' + (fabv?'var(--red)':'var(--green)') + '">' + fp(h2.fibTarget) + ' <span style="font-size:10px">' + pp(h2.fibTarget,cur) + '</span></div>';
-      h += '<div style="font-size:10px;color:var(--text-t)">' + (fabv ? 'Resistencia Fibonacci — zona donde puede frenar' : 'Soporte Fibonacci — zona donde puede rebotar') + '</div></div>';
-    }
-    if (h2.emaTarget) {
-      var eabv = h2.emaTarget > cur;
-      h += '<div style="padding:8px;border-radius:var(--r);border:1px solid var(--border);background:rgba(59,130,246,0.08)">';
-      h += '<div style="font-size:10px;color:#3b82f6;font-weight:600">📈 EMA objetivo</div>';
-      h += '<div style="font-family:var(--mono);font-size:13px;color:' + (eabv?'var(--red)':'var(--green)') + '">' + fp(h2.emaTarget) + ' <span style="font-size:10px">' + pp(h2.emaTarget,cur) + '</span></div>';
-      h += '<div style="font-size:10px;color:var(--text-t)">' + (eabv ? 'Actúa como imán/resistencia desde abajo' : 'Actúa como imán/soporte desde arriba') + '</div></div>';
-    }
-    h += '</div>';
-
-    // Explicaciones de por qué
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-    h += '<div style="padding:8px;border-radius:var(--r);background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15)">';
-    h += '<div style="font-size:10px;color:var(--green);font-weight:600;margin-bottom:4px">¿Por qué puede subir?</div>';
-    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + h2.whyUp + '</div></div>';
-    h += '<div style="padding:8px;border-radius:var(--r);background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15)">';
-    h += '<div style="font-size:10px;color:var(--red);font-weight:600;margin-bottom:4px">¿Por qué puede caer?</div>';
-    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + h2.whyDown + '</div></div>';
-    h += '</div>';
-
-    // Veredicto de probabilidad
-    var probScore = s.totalScore;
-    var probBull  = Math.min(Math.round(50 + probScore * 4), 85); // 50-85%
-    var probBear  = 100 - probBull;
-    var moreProbUp   = probBull >= probBear;
-    var probDiff     = Math.abs(probBull - probBear);
-    var conviccion   = probDiff > 25 ? 'Alta convicción' : probDiff > 10 ? 'Convicción moderada' : 'Sin dirección clara';
-    var probMainColor = moreProbUp ? 'var(--green)' : 'var(--red)';
-    var probMainLabel = moreProbUp ? '📈 MÁS PROBABLE QUE SUBA' : '📉 MÁS PROBABLE QUE CAIGA';
-    var probMainExp   = moreProbUp
-      ? 'El análisis técnico indica que hay más señales alcistas que bajistas. Esto no garantiza una suba — solo que las probabilidades históricas favorecen ese lado.'
-      : 'El análisis técnico indica que hay más señales bajistas que alcistas. El mercado puede sorprender, pero los indicadores favorecen ese lado.';
-
-    h += '<div style="margin-top:12px;padding:12px;border-radius:var(--r);background:' + probMainColor.replace(')',',0.1)').replace('var(','rgba(').replace('--green','34,197,94').replace('--red','239,68,68') + ';border:2px solid ' + probMainColor.replace(')',',0.4)').replace('var(','rgba(').replace('--green','34,197,94').replace('--red','239,68,68') + '">';
-    h += '<div style="font-size:13px;font-weight:700;color:' + probMainColor + ';margin-bottom:8px">' + probMainLabel + ' — ' + conviccion + '</div>';
-    // Barra de probabilidad
-    h += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--green)">📈 Sube: ' + probBull + '%</span><span style="color:var(--red)">📉 Cae: ' + probBear + '%</span></div>';
-    h += '<div style="height:10px;border-radius:5px;overflow:hidden;display:flex;background:var(--bg-hover)">';
-    h += '<div style="width:' + probBull + '%;background:var(--green);transition:width .5s"></div>';
-    h += '<div style="width:' + probBear + '%;background:var(--red);transition:width .5s"></div>';
-    h += '</div></div>';
-    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.5">' + probMainExp + '</div>';
-    // Razón principal
-    var mainReason = moreProbUp
-      ? (s.crossovers && s.crossovers.goldenCross ? 'Golden Cross activo + ' : '') + (s.stage && s.stage.includes('2') ? 'Stage 2 Weinstein (tendencia alcista) + ' : '') + 'Score técnico positivo (' + (s.bullScore||0) + ' alcistas vs ' + (s.bearScore||0) + ' bajistas)'
-      : (s.crossovers && s.crossovers.deathCross  ? 'Death Cross activo + ' : '') + (s.stage && s.stage.includes('4') ? 'Stage 4 Weinstein (tendencia bajista) + ' : '') + 'Score técnico negativo (' + (s.bearScore||0) + ' bajistas vs ' + (s.bullScore||0) + ' alcistas)';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.1)">Razón principal: ' + esc(mainReason) + '</div>';
-    h += '</div>';
-
-    // Métodos usados
-    h += '<div style="margin-top:8px;padding:6px 10px;border-radius:var(--r);background:var(--bg-hover);font-size:10px;color:var(--text-t)">Métodos: ' + h2.method + ' · ATR actual: ' + fp(atr) + ' (' + (ind.atrPct||'—') + '%)</div>';
-
     h += '</div>';
   });
 
-  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:6px;border-top:1px solid var(--border);margin-top:4px">⚠️ Los precios objetivo son estimaciones técnicas, no garantías. Factores externos (noticias, regulaciones, macro) pueden alterar estos rangos significativamente.</div>';
+  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:8px;border-top:1px solid var(--border);margin-top:4px;line-height:1.6">⚠️ Las proyecciones usan datos históricos reales del activo analizado. Factores externos (noticias, regulaciones, macro) pueden alterar estos rangos significativamente. El consenso es el promedio de los 3 métodos.</div>';
   h += '</div>';
 
   // ── 8. TARGETS Y S/R ──────────────────────────────────────────────────────
