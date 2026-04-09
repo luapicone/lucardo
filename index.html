@@ -934,50 +934,131 @@ function buildSignalCard(s) {
   h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:8px;border-top:1px solid var(--border);margin-top:4px;line-height:1.6">⚠️ Las proyecciones usan datos históricos reales del activo analizado. Factores externos (noticias, regulaciones, macro) pueden alterar estos rangos significativamente. El consenso es el promedio de los 3 métodos.</div>';
   h += '</div>';
 
-  // ── 8. TARGETS Y S/R ──────────────────────────────────────────────────────
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">';
-  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:14px">';
-  h += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:4px">🎯 Zonas objetivo de precio</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Zonas donde el precio podría llegar o encontrar resistencia si sube.</div>';
-  (tgt.upside||[]).slice(0,3).forEach(function(t) {
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">';
-    h += '<span style="color:var(--green);font-size:12px">▲ ' + esc(t.label) + (t.touches?' <span style="font-size:10px;color:var(--text-t)">(' + t.touches + '× tocado)</span>':'') + '</span>';
-    h += '<span style="font-family:var(--mono);font-size:12px">' + fp(t.price) + ' <span style="font-size:10px;color:var(--text-t)">' + pp(t.price,cur) + '</span></span></div>';
+  // ── 8. SOPORTES Y RESISTENCIAS ───────────────────────────────────────────
+  var allRes = (s.resistances||[]).filter(function(r){ return r.price > cur; }).sort(function(a,b){return a.price-b.price;});
+  var allSup = (s.supports||[]).filter(function(r){ return r.price < cur; }).sort(function(a,b){return b.price-a.price;});
+
+  // Fibonacci levels above and below
+  var fibRes = [fib.r_236, fib.r_382, fib.r_500].filter(function(v){ return v && v > cur*1.005; }).sort(function(a,b){return a-b;});
+  var fibSup = [fib.r_500, fib.r_618, fib.r_786, fib.r_1000].filter(function(v){ return v && v < cur*0.995; }).sort(function(a,b){return b-a;});
+
+  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
+  h += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">📍 Soportes y Resistencias</div>';
+  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:14px">Los soportes son pisos donde el precio históricamente frenó o rebotó. Las resistencias son techos donde el precio fue rechazado. <b>Cuantas más veces fue tocado un nivel, más fuerte es.</b> Cuando el precio rompe una resistencia, esta pasa a ser soporte y viceversa.</div>';
+
+  // Visual price ladder
+  h += '<div style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px">';
+
+  // Header
+  h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);padding:8px 12px;background:var(--bg-card);border-bottom:1px solid var(--border)">';
+  h += '<span>Tipo</span><span>Nivel</span><span>Precio</span><span>Distancia</span><span>Fortaleza</span></div>';
+
+  // Resistances (top to bottom = highest to lowest)
+  var resRows = [];
+  allRes.slice(0,4).forEach(function(r, i) {
+    resRows.push({ type:'R'+(i+1), price:r.price, touches:r.touches, isRes:true, source:'Pivot' });
   });
-  if (tgt.stopLoss) {
-    h += '<div style="margin-top:10px;padding:10px;border-radius:var(--r);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25)">';
-    h += '<div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:4px">🛑 Stop Loss sugerido</div>';
-    h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:6px">Si el precio llega acá, la señal técnica se invalida. Conviene salir para limitar pérdidas.</div>';
-    h += '<div style="font-family:var(--mono);font-size:14px;color:var(--red);margin-bottom:4px">' + fp(tgt.stopLoss.price) + ' <span style="font-size:11px">(' + (tgt.stopLoss.distPct||'') + '%)</span></div>';
-    if (tgt.riskReward != null) {
-      var rrC = tgt.riskReward>=2?'var(--green)':tgt.riskReward>=1.5?'#86efac':tgt.riskReward>=1?'var(--amber)':'var(--red)';
-      var rrLabel = tgt.riskReward>=2?'Favorable':tgt.riskReward>=1?'Aceptable':'Poco favorable';
-      h += '<div style="font-size:12px">Riesgo/Recompensa: <b style="color:'+rrC+'">1:'+tgt.riskReward+'</b> — <span style="color:'+rrC+'">'+rrLabel+'</span></div>';
-      h += '<div style="font-size:10px;color:var(--text-t);margin-top:2px">Por cada $1 de riesgo, el potencial de ganancia es $'+tgt.riskReward+'. Mínimo recomendado: 1:1.5</div>';
-    }
+  // Add Fibonacci resistances not already covered
+  fibRes.slice(0,2).forEach(function(v, i) {
+    var already = resRows.some(function(r){ return Math.abs(r.price-v)/v < 0.015; });
+    if (!already) resRows.push({ type:'Fib', price:v, touches:0, isRes:true, source:'Fibonacci' });
+  });
+  // Max 52w
+  if (s.high52w > cur*1.005) {
+    var already = resRows.some(function(r){ return Math.abs(r.price-s.high52w)/s.high52w < 0.01; });
+    if (!already) resRows.push({ type:'Máx', price:s.high52w, touches:0, isRes:true, source:'52 semanas' });
+  }
+  resRows.sort(function(a,b){ return a.price-b.price; }); // lowest first (closest to price)
+
+  // EMA resistances
+  if (ind.ema50 && ind.ema50 > cur*1.005) resRows.unshift({ type:'EMA', price:ind.ema50, touches:0, isRes:true, source:'EMA 50' });
+  if (ind.ema200 && ind.ema200 > cur*1.005) resRows.unshift({ type:'EMA', price:ind.ema200, touches:0, isRes:true, source:'EMA 200' });
+  resRows.sort(function(a,b){ return a.price-b.price; });
+
+  resRows.slice(0,5).forEach(function(r) {
+    var dist = pp(r.price, cur);
+    var strength = r.touches >= 3 ? '🔴🔴🔴 Fuerte' : r.touches >= 2 ? '🔴🔴 Moderada' : r.source==='EMA 200'||r.source==='52 semanas' ? '🔴🔴 Clave' : '🔴 Débil';
+    var why = r.source==='EMA 50' ? 'Media móvil 50 días — seguida por fondos institucionales' :
+              r.source==='EMA 200' ? 'Media móvil 200 días — la más importante de largo plazo' :
+              r.source==='52 semanas' ? 'Máximo del último año — resistencia psicológica fuerte' :
+              r.source==='Fibonacci' ? 'Nivel Fibonacci — zona técnica de alta confluencia' :
+              'Precio rechazado ' + r.touches + '× en esta zona en los últimos 90 días';
+    h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:center;background:rgba(239,68,68,0.04)">';
+    h += '<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(239,68,68,0.15);padding:2px 6px;border-radius:4px;text-align:center">' + esc(r.type) + '</span>';
+    h += '<span style="font-size:11px;color:var(--text-s);padding:0 8px">' + esc(why) + '</span>';
+    h += '<span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--red)">' + fp(r.price) + '</span>';
+    h += '<span style="font-size:12px;color:var(--red)">' + dist + '</span>';
+    h += '<span style="font-size:10px;color:var(--text-t)">' + strength + '</span>';
     h += '</div>';
+  });
+
+  // Current price row (highlighted)
+  h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;padding:12px 12px;border-bottom:1px solid var(--border);align-items:center;background:' + s.verdictColor + '15;border-left:3px solid ' + s.verdictColor + '">';
+  h += '<span style="font-size:10px;font-weight:700;color:' + s.verdictColor + ';background:' + s.verdictColor + '22;padding:2px 6px;border-radius:4px;text-align:center">HOY</span>';
+  h += '<span style="font-size:12px;font-weight:600;color:' + s.verdictColor + ';padding:0 8px">' + s.verdictIcon + ' Precio actual — ' + esc(s.stage||'') + '</span>';
+  h += '<span style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + s.verdictColor + '">' + fp(cur) + '</span>';
+  h += '<span style="font-size:12px;color:var(--text-t)">—</span>';
+  h += '<span style="font-size:10px;color:var(--text-t)">' + esc(s.verdict||'') + '</span>';
+  h += '</div>';
+
+  // Supports (highest to lowest = closest to price first)
+  var supRows = [];
+  allSup.slice(0,4).forEach(function(r, i) {
+    supRows.push({ type:'S'+(i+1), price:r.price, touches:r.touches, isRes:false, source:'Pivot' });
+  });
+  fibSup.slice(0,2).forEach(function(v, i) {
+    var already = supRows.some(function(r){ return Math.abs(r.price-v)/v < 0.015; });
+    if (!already) supRows.push({ type:'Fib', price:v, touches:0, isRes:false, source:'Fibonacci' });
+  });
+  if (s.low52w < cur*0.995) {
+    var already = supRows.some(function(r){ return Math.abs(r.price-s.low52w)/s.low52w < 0.01; });
+    if (!already) supRows.push({ type:'Mín', price:s.low52w, touches:0, isRes:false, source:'52 semanas' });
+  }
+  if (ind.ema50 && ind.ema50 < cur*0.995) supRows.push({ type:'EMA', price:ind.ema50, touches:0, isRes:false, source:'EMA 50' });
+  if (ind.ema200 && ind.ema200 < cur*0.995) supRows.push({ type:'EMA', price:ind.ema200, touches:0, isRes:false, source:'EMA 200' });
+  supRows.sort(function(a,b){ return b.price-a.price; }); // closest first
+
+  supRows.slice(0,5).forEach(function(r) {
+    var dist = pp(r.price, cur);
+    var strength = r.touches >= 3 ? '🟢🟢🟢 Fuerte' : r.touches >= 2 ? '🟢🟢 Moderado' : r.source==='EMA 200'||r.source==='52 semanas' ? '🟢🟢 Clave' : '🟢 Débil';
+    var why = r.source==='EMA 50' ? 'Media móvil 50 días — soporte dinámico institucional' :
+              r.source==='EMA 200' ? 'Media móvil 200 días — soporte de largo plazo fundamental' :
+              r.source==='52 semanas' ? 'Mínimo del último año — soporte psicológico fuerte' :
+              r.source==='Fibonacci' ? 'Nivel Fibonacci — zona técnica de alta confluencia' :
+              'Precio rebotó ' + r.touches + '× desde esta zona en los últimos 90 días';
+    h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:center;background:rgba(34,197,94,0.04)">';
+    h += '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,0.15);padding:2px 6px;border-radius:4px;text-align:center">' + esc(r.type) + '</span>';
+    h += '<span style="font-size:11px;color:var(--text-s);padding:0 8px">' + esc(why) + '</span>';
+    h += '<span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--green)">' + fp(r.price) + '</span>';
+    h += '<span style="font-size:12px;color:var(--green)">' + dist + '</span>';
+    h += '<span style="font-size:10px;color:var(--text-t)">' + strength + '</span>';
+    h += '</div>';
+  });
+
+  h += '</div>'; // close table
+
+  // What to watch
+  var nearestRes = resRows[0];
+  var nearestSup = supRows[0];
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  h += '<div style="padding:12px;border-radius:var(--r);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2)">';
+  h += '<div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px">⚠️ Si el precio sube — qué observar</div>';
+  if (nearestRes) {
+    h += '<div style="font-size:12px;color:var(--text-s)">La primera resistencia está en <b style="color:var(--red)">' + fp(nearestRes.price) + '</b> (' + pp(nearestRes.price,cur) + '). ';
+    h += 'Si el precio llega ahí y <b>no puede cerrar por encima</b> en vela diaria, puede rebotar a la baja. ';
+    h += 'Si lo rompe con volumen alto, la resistencia pasa a ser soporte y el próximo objetivo es ' + (resRows[1] ? fp(resRows[1].price) : 'el máximo anual') + '.</div>';
   }
   h += '</div>';
-  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:14px">';
-  h += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:4px">📍 Soportes y Resistencias</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Zonas históricas donde el precio frenó o rebotó múltiples veces.</div>';
-  h += '<div style="font-size:10px;color:var(--red);font-weight:600;margin-bottom:4px">Resistencias (techo)</div>';
-  (tgt.upside||[]).slice(0,2).forEach(function(t) {
-    h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0">';
-    h += '<span style="color:var(--text-s)">' + fp(t.price) + '</span><span style="color:var(--red)">' + pp(t.price,cur) + '</span></div>';
-  });
-  if (!(tgt.upside||[]).length) h += '<div style="font-size:11px;color:var(--text-t)">—</div>';
-  h += '<div style="text-align:center;padding:6px;margin:6px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);font-size:11px;color:var(--text-s)">Precio actual ' + fp(cur) + '</div>';
-  h += '<div style="font-size:10px;color:var(--green);font-weight:600;margin-bottom:4px">Soportes (piso)</div>';
-  (tgt.downside||[]).slice(0,2).forEach(function(t) {
-    h += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0">';
-    h += '<span style="color:var(--text-s)">' + fp(t.price) + '</span><span style="color:var(--green)">' + pp(t.price,cur) + '</span></div>';
-  });
-  if (!(tgt.downside||[]).length) h += '<div style="font-size:11px;color:var(--text-t)">—</div>';
-  h += '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">';
-  h += '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="color:var(--text-t)">Máx 52 semanas</span><span style="font-family:var(--mono);color:var(--red)">' + fp(s.high52w) + '</span></div>';
-  h += '<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text-t)">Mín 52 semanas</span><span style="font-family:var(--mono);color:var(--green)">' + fp(s.low52w) + '</span></div>';
-  h += '</div></div></div>';
+  h += '<div style="padding:12px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2)">';
+  h += '<div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">✅ Si el precio cae — qué observar</div>';
+  if (nearestSup) {
+    h += '<div style="font-size:12px;color:var(--text-s)">El primer soporte está en <b style="color:var(--green)">' + fp(nearestSup.price) + '</b> (' + pp(nearestSup.price,cur) + '). ';
+    h += 'Si el precio llega ahí y <b>rebota con volumen</b>, puede ser una buena zona de entrada. ';
+    h += 'Si lo pierde con vela de cierre abajo, el siguiente soporte es ' + (supRows[1] ? fp(supRows[1].price) : 'el mínimo anual') + '.</div>';
+  }
+  h += '</div>';
+  h += '</div>';
+  h += '</div>';
 
   // ── 9. ESCENARIOS CON PROBABILIDAD ────────────────────────────────────────
   h += '<div style="margin-bottom:14px">';
