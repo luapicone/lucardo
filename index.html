@@ -639,494 +639,280 @@ function scoreBar(bull, bear) {
 }
 
 function buildSignalCard(s) {
-  var ind = s.indicators || {};
-  var cur = s.currentPrice;
-  var act = s.action || {};
-  var tgt = s.targets || {};
-  var scn = s.scenarios || [];
-  var fib = s.fibonacci || {};
-  var sigs = s.signals || [];
+  var ind  = s.indicators || {};
+  var proj = s.projections || {};
+  var ph   = proj.horizons || [];
+  var act  = s.action || {};
+  var scn  = s.scenarios || [];
+  var fib  = s.fibonacci || {};
+  var cur  = s.currentPrice;
   var chgC = s.changePercent >= 0 ? 'var(--green)' : 'var(--red)';
-  var chgS = s.changePercent >= 0 ? '+' : '';
-  var vbg = s.totalScore >= 8  ? 'rgba(34,197,94,0.15)' :
-            s.totalScore >= 5  ? 'rgba(134,239,172,0.12)' :
-            s.totalScore >= 2  ? 'rgba(167,243,208,0.1)' :
-            s.totalScore >= -1 ? 'rgba(234,179,8,0.12)' :
-            s.totalScore >= -4 ? 'rgba(252,165,165,0.12)' : 'rgba(239,68,68,0.15)';
-  var assetLbl = s.assetType === 'crypto' ? 'Criptomoneda' : s.assetType === 'cedear' ? 'CEDEAR' : 'Acción / ETF';
-  var h = '';
+  var vbg  = s.totalScore >= 5 ? 'rgba(34,197,94,0.15)' : s.totalScore >= 2 ? 'rgba(134,239,172,0.1)' :
+             s.totalScore >= -1 ? 'rgba(234,179,8,0.12)' : s.totalScore >= -4 ? 'rgba(252,165,165,0.1)' : 'rgba(239,68,68,0.15)';
 
-  // ── 1. HEADER ──────────────────────────────────────────────────────────────
-  h += '<div class="signal-card spot-card" style="border-color:' + s.verdictColor + '44">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">';
+  var h = '<div class="signal-card spot-card" style="border-color:' + s.verdictColor + '44">';
+
+  // ── BLOQUE 1: VEREDICTO + ACCIÓN ──────────────────────────────────────────
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
+  // Left: ticker + price
   h += '<div style="display:flex;align-items:center;gap:12px">';
-  h += '<div style="width:52px;height:52px;border-radius:12px;background:' + s.verdictColor + '22;border:2px solid ' + s.verdictColor + '55;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:' + s.verdictColor + ';font-family:var(--mono)">' + esc(s.ticker.slice(0,4)) + '</div>';
-  h += '<div><div style="font-size:22px;font-weight:600;font-family:var(--mono)">' + fp(cur) + ' <span style="font-size:14px;color:' + chgC + '">' + chgS + s.changePercent + '% hoy</span></div>';
-  h += '<div style="font-size:11px;color:var(--text-t);margin-top:2px">' + esc(assetLbl) + ' · ' + esc(s.stage||'') + ' · ' + (s.barsCount||0) + ' días analizados</div></div></div>';
-  h += '<div style="text-align:right"><div class="verdict-badge" style="color:' + s.verdictColor + ';border-color:' + s.verdictColor + ';background:' + vbg + ';font-size:14px;padding:7px 18px">' + s.verdictIcon + ' ' + esc(s.verdict) + '</div>';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-top:6px">Score técnico: <b style="color:' + s.verdictColor + '">' + (s.totalScore > 0 ? '+' : '') + s.totalScore + '</b> (' + (s.bullScore||0) + ' alcistas / ' + (s.bearScore||0) + ' bajistas)</div></div></div>';
-  // Score bar
-  var tot = (s.bullScore||0) + (s.bearScore||0) || 1;
-  var bpct = Math.round((s.bullScore||0)/tot*100);
-  h += '<div style="height:8px;border-radius:4px;overflow:hidden;display:flex;margin-bottom:4px"><div style="width:' + bpct + '%;background:var(--green)"></div><div style="width:' + (100-bpct) + '%;background:var(--red)"></div></div>';
-  h += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-t);margin-bottom:16px"><span style="color:var(--green)">▲ ' + (s.bullScore||0) + ' señales alcistas</span><span style="color:var(--red)">▼ ' + (s.bearScore||0) + ' señales bajistas</span></div>';
+  h += '<div style="width:50px;height:50px;border-radius:10px;background:' + s.verdictColor + '22;border:2px solid ' + s.verdictColor + '55;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:' + s.verdictColor + ';font-family:var(--mono)">' + esc(s.ticker.slice(0,4)) + '</div>';
+  h += '<div>';
+  h += '<div style="font-size:11px;color:var(--text-t)">' + esc(s.assetType==='crypto'?'Criptomoneda':s.assetType==='cedear'?'CEDEAR':'Acción / ETF') + ' · ' + esc(s.stage||'') + '</div>';
+  h += '<div style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:2px">' + fp(cur) + ' <span style="font-size:13px;color:' + chgC + '">' + (s.changePercent>=0?'+':'') + s.changePercent + '% hoy</span></div>';
+  h += '</div></div>';
+  // Right: verdict
+  h += '<div style="text-align:right">';
+  h += '<div class="verdict-badge" style="color:' + s.verdictColor + ';border-color:' + s.verdictColor + ';background:' + vbg + ';font-size:15px;padding:8px 20px;margin-bottom:6px">' + s.verdictIcon + ' ' + esc(s.verdict) + '</div>';
+  h += '<div style="font-size:10px;color:var(--text-t)">' + (s.bullScore||0) + ' alcistas · ' + (s.bearScore||0) + ' bajistas · Score ' + (s.totalScore>0?'+':'') + s.totalScore + '</div>';
+  h += '</div></div>';
 
-  // ── 2. ACCIÓN RECOMENDADA ──────────────────────────────────────────────────
+  // Score bar
+  var bpct = Math.round((s.bullScore||0)/((s.bullScore||0)+(s.bearScore||0)||1)*100);
+  h += '<div style="height:6px;border-radius:3px;overflow:hidden;display:flex;margin-bottom:16px">';
+  h += '<div style="width:' + bpct + '%;background:var(--green)"></div><div style="width:' + (100-bpct) + '%;background:var(--red)"></div></div>';
+
+  // ── BLOQUE 2: QUÉ HACER ───────────────────────────────────────────────────
   if (act.action) {
-    h += '<div style="background:' + act.actionColor + '18;border:2px solid ' + act.actionColor + '55;border-radius:var(--rl);padding:16px;margin-bottom:16px">';
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">';
-    h += '<div style="font-size:26px">' + act.actionIcon + '</div>';
-    h += '<div><div style="font-size:18px;font-weight:700;color:' + act.actionColor + '">' + esc(act.action) + '</div>';
-    h += '<div style="font-size:11px;color:var(--text-t)">Recomendación basada en análisis técnico multi-estrategia</div></div>';
-    if (act.warning) h += '<div style="margin-left:auto;font-size:10px;padding:3px 10px;border-radius:99px;background:rgba(234,179,8,0.2);color:var(--amber);border:1px solid rgba(234,179,8,0.4)">' + esc(act.warning) + '</div>';
+    h += '<div style="background:' + act.actionColor + '18;border:2px solid ' + act.actionColor + '44;border-radius:var(--r);padding:14px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    h += '<span style="font-size:20px">' + act.actionIcon + '</span>';
+    h += '<span style="font-size:16px;font-weight:700;color:' + act.actionColor + '">' + esc(act.action) + '</span>';
+    if (act.warning) h += '<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:rgba(234,179,8,0.2);color:var(--amber);border:1px solid rgba(234,179,8,0.4);margin-left:auto">' + esc(act.warning) + '</span>';
     h += '</div>';
-    h += '<div style="display:flex;flex-direction:column;gap:7px">';
-    (act.reasons||[]).forEach(function(r) {
-      h += '<div style="display:flex;gap:8px;font-size:12px;color:' + act.actionColor + 'dd"><span style="flex-shrink:0">›</span><span>' + esc(r) + '</span></div>';
+    h += '<div style="display:flex;flex-direction:column;gap:5px">';
+    (act.reasons||[]).forEach(function(r){
+      h += '<div style="font-size:12px;color:' + act.actionColor + 'cc;display:flex;gap:6px"><span>›</span><span>' + esc(r) + '</span></div>';
     });
     h += '</div></div>';
   }
 
-  // ── 3. INDICADORES con explicación CONTEXTUAL ──────────────────────────────
-  h += '<div style="margin-bottom:14px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:10px">📊 Indicadores — ¿qué dice cada uno ahora mismo?</div>';
+  // ── BLOQUE 3: INDICADORES — tabla compacta ────────────────────────────────
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">Indicadores técnicos</div>';
 
-  // RSI
-  var rsiV = ind.rsi;
-  var rsiC = rsiV < 30 ? 'var(--green)' : rsiV > 70 ? 'var(--red)' : rsiV > 50 ? '#86efac' : 'var(--text-s)';
-  var rsiLabel = rsiV < 25 ? 'Sobreventa extrema' : rsiV < 35 ? 'Sobreventa' : rsiV > 80 ? 'Sobrecompra extrema' : rsiV > 70 ? 'Sobrecompra' : rsiV > 55 ? 'Zona de fuerza' : rsiV > 45 ? 'Zona neutral' : 'Zona de debilidad';
-  var rsiExp = rsiV < 30 ? 'El precio cayó mucho y rápido. La mayoría vendió — puede haber un rebote técnico próximo. <b>No garantiza reversión</b>, pero la probabilidad de rebote es mayor.'
-             : rsiV > 70 ? 'El precio subió mucho y muchos compraron. Puede seguir subiendo, pero el riesgo de corrección o pausa es elevado. <b>Cuidado con entrar ahora.</b>'
-             : rsiV > 55 ? 'El precio tiene impulso positivo. Ni comprado ni vendido — zona <b>saludable para operar en tendencia alcista</b>.'
-             : rsiV > 45 ? 'El RSI está en zona neutral. Sin señal clara de fuerza o debilidad. Esperar definición.'
-             : 'El precio está perdiendo fuerza compradora. Señal de <b>debilidad que puede anticipar más caída</b>.';
-
-  h += indBox('RSI ' + (rsiV!=null?rsiV.toFixed(1):'—'), rsiLabel, rsiC, rsiExp,
-    'El RSI (Índice de Fuerza Relativa) mide qué tan rápido y cuánto subió o bajó el precio en los últimos 14 días. Va de 0 a 100.',
-    'Creado por Welles Wilder en 1978. Usado por la mayoría de traders en el mundo.');
-
-  // MACD
-  var macdBull = ind.macdLine > ind.macdSignal;
-  var macdLabel = macdBull ? 'Momentum alcista' : 'Momentum bajista';
-  var macdC = macdBull ? 'var(--green)' : 'var(--red)';
-  var histAbs = Math.abs(ind.macdHist||0);
-  var macdExp = macdBull
-    ? 'La línea MACD está sobre la línea de señal — <b>el impulso del precio es positivo</b>. Cuanto más separadas estén, más fuerte es la tendencia alcista.' + (histAbs > 0.5*Math.abs(ind.macdLine||1) ? ' El histograma está acelerando.' : '')
-    : 'La línea MACD está bajo la línea de señal — <b>el impulso es negativo</b>. El precio tiene más presión vendedora que compradora.';
-
-  h += indBox('MACD ' + (ind.macdHist!=null?(ind.macdHist>0?'+':'')+ind.macdHist.toFixed(3):'—'), macdLabel, macdC, macdExp,
-    'El MACD (Convergencia/Divergencia de Medias Móviles) compara dos promedios del precio para detectar cambios de tendencia.',
-    'Creado por Gerald Appel en los años 70. Una de las herramientas más usadas en análisis técnico.');
-
-  // Stochastic
-  var stK = ind.stochK;
-  var stLabel = stK < 20 ? 'Sobreventa' : stK > 80 ? 'Sobrecompra' : stK > 50 ? 'Neutral-Alto' : 'Neutral-Bajo';
-  var stC = stK < 20 ? 'var(--green)' : stK > 80 ? 'var(--red)' : 'var(--text-s)';
-  var stExp = stK < 20 ? '<b>El precio está en la zona baja</b> del rango de los últimos 14 días. Puede rebotar. Combinado con RSI en sobreventa, señal de compra más fuerte.'
-            : stK > 80 ? '<b>El precio está en la zona alta</b> del rango de los últimos 14 días. Puede corregir. No significa venta automática en tendencias alcistas fuertes.'
-            : stK > 50 ? 'El precio está en la mitad superior de su rango reciente. Sesgo levemente alcista de corto plazo.'
-            : 'El precio está en la mitad inferior de su rango reciente. Sesgo levemente bajista de corto plazo.';
-
-  h += indBox('Estocástico ' + (stK!=null?stK.toFixed(1)+'%':'—'), stLabel, stC, stExp,
-    'El Estocástico compara el precio actual con el rango (máximo-mínimo) de los últimos 14 días. Muestra si el precio está "caro" o "barato" dentro de ese rango.',
-    'Creado por George Lane. Excelente combinado con RSI para confirmar señales.');
-
-  // Bollinger
-  var bbP = ind.bbPct;
-  var bbLabel = bbP > 0.9 ? 'Zona de sobrecompra técnica' : bbP < 0.1 ? 'Zona de sobreventa técnica' : bbP > 0.7 ? 'Precio alto en las bandas' : bbP < 0.3 ? 'Precio bajo en las bandas' : 'Precio en zona central';
-  var bbC = bbP > 0.85 ? 'var(--red)' : bbP < 0.15 ? 'var(--green)' : 'var(--text-s)';
-  var bbExp = bbP > 0.9 ? '<b>El precio está tocando o superando la banda superior.</b> Estadísticamente el 95% del tiempo el precio está dentro de las bandas. Esto sugiere extensión de corto plazo — puede seguir subiendo, pero el riesgo de corrección es alto.'
-            : bbP < 0.1 ? '<b>El precio está tocando o perforando la banda inferior.</b> Zona de sobreventa estadística. Alta probabilidad de rebote hacia la media (' + fp(ind.bbMid) + ').'
-            : bbP > 0.7 ? 'El precio está en el tercio superior de las bandas. Precio relativamente alto — queda poca distancia hasta la resistencia de la banda superior (' + fp(ind.bbUpper) + ').'
-            : bbP < 0.3 ? 'El precio está en el tercio inferior de las bandas. Zona de soporte técnico con la banda inferior (' + fp(ind.bbLower) + ') cerca.'
-            : 'El precio está cerca de la media de las bandas (' + fp(ind.bbMid) + '). Zona de equilibrio. Sin señal extrema.';
-  if (ind.bbWidth < 0.05) bbExp += ' <b>⚡ Las bandas están muy comprimidas (Squeeze)</b> — poca volatilidad reciente. Esto suele preceder un movimiento explosivo en cualquier dirección.';
-
-  h += indBox('Bollinger ' + (bbP!=null?(bbP*100).toFixed(0)+'%':'—'), bbLabel, bbC, bbExp,
-    'Las Bandas de Bollinger crean un canal de volatilidad alrededor del precio promedio. El 95% del tiempo el precio se mantiene dentro de las bandas.',
-    'Creado por John Bollinger en los años 80. Muy usado para detectar extremos de volatilidad.');
-
-  // OBV
-  var obvT = ind.obvTrend;
-  var obvLabel = obvT === 'rising' ? 'Volumen neto comprando' : obvT === 'falling' ? 'Volumen neto vendiendo' : 'Volumen sin dirección';
-  var obvC = obvT === 'rising' ? 'var(--green)' : obvT === 'falling' ? 'var(--red)' : 'var(--text-s)';
-  var obvExp = obvT === 'rising' ? '<b>El volumen acumulado está subiendo</b> — hay más compradores que vendedores de forma sostenida. Cuando el OBV sube antes que el precio, puede anticipar una suba. Señal positiva de acumulación.'
-             : obvT === 'falling' ? '<b>El volumen acumulado está bajando</b> — más vendedores que compradores. Cuando el OBV baja mientras el precio sube, es señal de distribución (los "grandes" están vendiendo silenciosamente). Señal negativa.'
-             : 'El volumen no tiene una dirección clara. Sin confirmación de la tendencia del precio por parte del volumen.';
-
-  h += indBox('OBV ' + (obvT==='rising'?'↑ Subiendo':obvT==='falling'?'↓ Bajando':'→ Lateral'), obvLabel, obvC, obvExp,
-    'El OBV (On Balance Volume) suma el volumen de los días que sube y lo resta en los días que baja, creando una línea acumulada de flujo de dinero.',
-    'Creado por Joe Granville en 1963. Clave para detectar acumulación o distribución antes de que el precio se mueva.');
-
-  h += '</div>';
-
-  // ── 4. MEDIAS MÓVILES ──────────────────────────────────────────────────────
-  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:4px">📈 Medias Móviles — ¿el precio está en zona alcista o bajista?</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:12px">Las medias móviles son el precio promedio de los últimos N días. Si el precio actual está <b>arriba de la media</b> → tendencia alcista en ese plazo. Si está <b>abajo</b> → tendencia bajista. Cuando varias alineadas en la misma dirección, la señal es más confiable.</div>';
-  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">';
-  var emas = [
-    ['MA 30', 'Tendencia principal (Weinstein)', ind.ma30,
-     'Stan Weinstein usa esta media como referencia central de tendencia. Si está subiendo y el precio está arriba: Stage 2 (tendencia alcista). Si está bajando y el precio abajo: Stage 4 (tendencia bajista).'],
-    ['EMA 20', 'Corto plazo (1 mes)', ind.ema20,
-     'Refleja la tendencia de las últimas 4 semanas. En tendencias alcistas, el precio suele volver a tocar esta media y rebotar. Útil para entradas en pullbacks.'],
-    ['EMA 50', 'Mediano plazo (2 meses)', ind.ema50,
-     'Una de las medias más seguidas por instituciones. Si el precio está arriba → sesgo alcista de mediano plazo. Es el nivel de soporte/resistencia dinámica más importante.'],
-    ['EMA 200', 'Largo plazo (1 año)', ind.ema200,
-     'La media más importante de largo plazo. Precio arriba = mercado alcista. Abajo = mercado bajista. Se usa para filtrar el ruido del mercado y ver la tendencia de fondo.'],
+  // Grid 2x3 compacto
+  var indGrid = [
+    { name:'RSI 14', val: ind.rsi!=null?ind.rsi.toFixed(1):'—',
+      color: ind.rsi<30?'var(--green)':ind.rsi>70?'var(--red)':'var(--text)',
+      label: ind.rsi<30?'Sobreventa':ind.rsi>70?'Sobrecompra':ind.rsi>50?'Fuerza':'Debilidad',
+      tip: ind.rsi<30?'Demasiados vendieron — puede rebotar':ind.rsi>70?'Demasiados compraron — puede corregir':ind.rsi>50?'Impulso positivo activo':'Impulso negativo activo',
+      who:'Welles Wilder' },
+    { name:'MACD', val: ind.macdHist!=null?(ind.macdHist>0?'+':'')+ind.macdHist.toFixed(3):'—',
+      color: ind.macdLine>ind.macdSignal?'var(--green)':'var(--red)',
+      label: ind.macdLine>ind.macdSignal?'Alcista':'Bajista',
+      tip: ind.macdLine>ind.macdSignal?'El precio tiene impulso positivo':'El precio tiene impulso negativo',
+      who:'Gerald Appel' },
+    { name:'Estocástico', val: ind.stochK!=null?ind.stochK.toFixed(1)+'%':'—',
+      color: ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text)',
+      label: ind.stochK<20?'Sobreventa':ind.stochK>80?'Sobrecompra':'Neutral',
+      tip: ind.stochK<20?'En zona baja del rango — posible rebote':ind.stochK>80?'En zona alta del rango — posible baja':'En zona media sin señal extrema',
+      who:'George Lane' },
+    { name:'Bollinger', val: ind.bbPct!=null?(ind.bbPct*100).toFixed(0)+'%':'—',
+      color: ind.bbPct>0.85?'var(--red)':ind.bbPct<0.15?'var(--green)':'var(--text)',
+      label: ind.bbPct>0.85?'Zona alta':ind.bbPct<0.15?'Zona baja':'Normal',
+      tip: ind.bbPct>0.85?'Precio cerca de la banda superior — estadísticamente estirado':ind.bbPct<0.15?'Precio cerca de la banda inferior — posible rebote':'Precio en zona normal de volatilidad',
+      who:'John Bollinger' },
+    { name:'OBV', val: ind.obvTrend==='rising'?'↑ Subiendo':ind.obvTrend==='falling'?'↓ Bajando':'→ Lateral',
+      color: ind.obvTrend==='rising'?'var(--green)':ind.obvTrend==='falling'?'var(--red)':'var(--text-s)',
+      label: ind.obvTrend==='rising'?'Acumulando':ind.obvTrend==='falling'?'Distribuyendo':'Lateral',
+      tip: ind.obvTrend==='rising'?'Más compradores que vendedores en volumen':ind.obvTrend==='falling'?'Más vendedores que compradores en volumen':'Volumen sin dirección clara',
+      who:'Joe Granville' },
+    { name:'Volumen', val: ind.volRatio!=null?ind.volRatio.toFixed(1)+'x':'—',
+      color: ind.volRatio>1.5&&s.changePercent>0?'var(--green)':ind.volRatio>1.5&&s.changePercent<0?'var(--red)':'var(--text)',
+      label: ind.volRatio>2?'Muy alto':ind.volRatio>1.5?'Alto':ind.volRatio<0.7?'Bajo':'Normal',
+      tip: ind.volRatio>1.5?'Movimiento con mucho volumen — más confiable':'Movimiento con poco volumen — menos confiable',
+      who:'' },
   ];
-  emas.forEach(function(m) {
-    var abv = m[2] && cur > m[2];
-    var c = m[2] ? (abv ? 'var(--green)' : 'var(--red)') : 'var(--text-t)';
-    var pctDiff = m[2] ? ((cur - m[2])/m[2]*100).toFixed(1) : null;
-    h += '<div style="padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg-card)">';
-    h += '<div style="font-size:11px;font-weight:600;color:var(--text)">' + m[0] + '</div>';
-    h += '<div style="font-size:9px;color:var(--text-t);margin-bottom:8px">' + m[1] + '</div>';
-    h += '<div style="font-family:var(--mono);font-size:13px;color:' + c + ';margin-bottom:4px">' + fp(m[2]) + '</div>';
-    h += '<div style="font-size:11px;font-weight:600;color:' + c + '">' + (m[2] ? (abv ? '✅ Precio arriba' : '🔴 Precio abajo') : '—') + (pctDiff ? ' <span style="font-size:10px;font-weight:400">(' + (abv?'+':'') + pctDiff + '%)</span>' : '') + '</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-top:6px;line-height:1.4">' + m[3] + '</div>';
+
+  h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">';
+  indGrid.forEach(function(it) {
+    h += '<div style="padding:10px;border:1px solid var(--border);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-t);margin-bottom:4px">' + it.name + (it.who?' · <i>'+it.who+'</i>':'') + '</div>';
+    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:' + it.color + '">' + it.val + '</div>';
+    h += '<div style="font-size:10px;color:' + it.color + ';margin-top:2px;font-weight:600">' + it.label + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-top:3px;line-height:1.4">' + it.tip + '</div>';
     h += '</div>';
   });
   h += '</div>';
-  // Crossovers
-  if (s.crossovers) {
-    if (s.crossovers.goldenCross) {
-      h += '<div style="padding:10px 14px;border-radius:var(--r);background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);font-size:12px"><b style="color:var(--green)">✨ Golden Cross activo</b> — La EMA de 50 días cruzó hacia arriba la de 200 días. Históricamente, esto señala el inicio de un mercado alcista prolongado. Señal muy positiva de largo plazo.</div>';
-    } else if (s.crossovers.deathCross) {
-      h += '<div style="padding:10px 14px;border-radius:var(--r);background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);font-size:12px"><b style="color:var(--red)">💀 Death Cross activo</b> — La EMA de 50 días cruzó hacia abajo la de 200 días. Históricamente anticipa períodos bajistas prolongados. Señal muy negativa de largo plazo.</div>';
-    } else if (s.crossovers.e50aboveE200) {
-      h += '<div style="padding:10px 14px;border-radius:var(--r);background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);font-size:12px;color:var(--text-s)">EMA 50 está <b style="color:var(--green)">por encima</b> de EMA 200 — estructura alcista de largo plazo activa. No hay cruce reciente pero la tendencia de fondo es positiva.</div>';
-    } else {
-      h += '<div style="padding:10px 14px;border-radius:var(--r);background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);font-size:12px;color:var(--text-s)">EMA 50 está <b style="color:var(--red)">por debajo</b> de EMA 200 — estructura bajista de largo plazo. El mercado de fondo no es favorable.</div>';
-    }
+
+  // EMAs compacto
+  h += '<div style="border-top:1px solid var(--border);padding-top:10px">';
+  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:7px">Medias móviles — ¿el precio está arriba (✅ alcista) o abajo (🔴 bajista)?</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">';
+  [['MA30','Tendencia',ind.ma30],['EMA20','1 mes',ind.ema20],['EMA50','2 meses',ind.ema50],['EMA200','1 año',ind.ema200]].forEach(function(m) {
+    var abv = m[2] && cur > m[2];
+    var c = m[2] ? (abv?'var(--green)':'var(--red)') : 'var(--text-t)';
+    h += '<div style="text-align:center;padding:7px;border:1px solid var(--border);border-radius:var(--r)">';
+    h += '<div style="font-size:10px;font-weight:600;color:var(--text)">' + m[0] + '</div>';
+    h += '<div style="font-size:9px;color:var(--text-t);margin-bottom:4px">' + m[1] + '</div>';
+    h += '<div style="font-size:11px;font-family:var(--mono);color:' + c + '">' + fp(m[2]) + '</div>';
+    h += '<div style="font-size:11px;font-weight:700;color:' + c + ';margin-top:2px">' + (m[2]?(abv?'✅ Arriba':'🔴 Abajo'):'—') + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  // Golden/Death cross alert
+  if (s.crossovers && s.crossovers.goldenCross) h += '<div style="margin-top:8px;padding:7px 12px;border-radius:var(--r);background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);font-size:11px;color:var(--green)">✨ <b>Golden Cross:</b> EMA50 cruzó arriba la EMA200 — señal alcista de largo plazo</div>';
+  if (s.crossovers && s.crossovers.deathCross) h += '<div style="margin-top:8px;padding:7px 12px;border-radius:var(--r);background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);font-size:11px;color:var(--red)">💀 <b>Death Cross:</b> EMA50 cruzó abajo la EMA200 — señal bajista de largo plazo</div>';
+  // Bollinger visual
+  if (ind.bbPct != null) {
+    var pct = Math.min(Math.max(ind.bbPct*100,2),98);
+    h += '<div style="margin-top:10px">';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:4px">Posición en Bandas de Bollinger</div>';
+    h += '<div style="position:relative;height:20px;border-radius:4px;background:linear-gradient(to right,rgba(34,197,94,0.3),rgba(234,179,8,0.15) 40%,rgba(234,179,8,0.15) 60%,rgba(239,68,68,0.3));margin-bottom:4px">';
+    h += '<div style="position:absolute;top:50%;left:' + pct + '%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:' + s.verdictColor + ';border:2px solid white"></div></div>';
+    h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-family:var(--mono);color:var(--text-t)">';
+    h += '<span style="color:var(--green)">' + fp(ind.bbLower) + '</span><span>Media ' + fp(ind.bbMid) + '</span><span style="color:var(--red)">' + fp(ind.bbUpper) + '</span></div>';
+    if (ind.bbWidth < 0.05) h += '<div style="margin-top:5px;font-size:11px;color:var(--amber)">⚡ <b>Squeeze:</b> bandas comprimidas — se viene un movimiento explosivo</div>';
+    h += '</div>';
   }
-  h += '</div>';
-
-  // ── 5. BOLLINGER VISUAL ────────────────────────────────────────────────────
-  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:4px">📏 Bandas de Bollinger — ¿dónde está el precio en el rango de volatilidad?</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Cerca de la banda inferior → posible rebote. Cerca de la banda superior → posible corrección. El punto muestra dónde está el precio ahora.</div>';
-  var pct = ind.bbPct != null ? Math.min(Math.max(ind.bbPct*100,2),98) : 50;
-  h += '<div style="position:relative;height:28px;border-radius:6px;overflow:hidden;margin-bottom:8px;background:linear-gradient(to right,rgba(34,197,94,0.3),rgba(234,179,8,0.15) 40%,rgba(234,179,8,0.15) 60%,rgba(239,68,68,0.3))">';
-  h += '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:10px;color:var(--text-t)"><span>Sobrevendido</span><span>Sobrecomprado</span></div>';
-  if (ind.bbPct != null) h += '<div style="position:absolute;top:50%;transform:translate(-50%,-50%);left:' + pct + '%;width:14px;height:14px;border-radius:50%;background:' + s.verdictColor + ';border:2px solid white;box-shadow:0 0 8px ' + s.verdictColor + '"></div>';
-  h += '</div>';
-  h += '<div style="display:flex;justify-content:space-between;font-size:12px;font-family:var(--mono);margin-bottom:10px">';
-  h += '<span style="color:var(--green)">Inf: ' + fp(ind.bbLower) + '</span>';
-  h += '<span style="color:var(--text-s)">Med: ' + fp(ind.bbMid) + '</span>';
-  h += '<span style="color:var(--red)">Sup: ' + fp(ind.bbUpper) + '</span></div>';
-  if (ind.bbWidth < 0.05) h += '<div style="padding:8px 12px;border-radius:var(--r);background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);font-size:12px;color:var(--amber)">⚡ <b>Bollinger Squeeze:</b> Las bandas están muy comprimidas (ancho ' + (ind.bbWidth*100).toFixed(1) + '%). Esto significa que el mercado está en pausa — se acerca un movimiento explosivo. La dirección dependerá de los catalizadores del momento.</div>';
-  h += '</div>';
-
-  // ── 6. DIVERGENCIAS ────────────────────────────────────────────────────────
+  // Divergence
   if (s.divergences && (s.divergences.bullDiv || s.divergences.bearDiv)) {
     var dB = s.divergences.bullDiv;
-    h += '<div style="padding:14px;border-radius:var(--rl);margin-bottom:14px;background:' + (dB?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)') + ';border:1px solid ' + (dB?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)') + '">';
-    h += '<div style="font-size:13px;font-weight:700;color:' + (dB?'var(--green)':'var(--red)') + ';margin-bottom:6px">🔄 Divergencia ' + (dB?'alcista':'bajista') + ' RSI detectada — señal avanzada importante</div>';
-    h += '<div style="font-size:12px;color:var(--text-s);line-height:1.6">';
-    if (dB) {
-      h += 'El precio marcó un <b>nuevo mínimo más bajo</b>, pero el RSI NO lo confirmó (hizo un mínimo más alto). Esto significa que aunque el precio cayó más, <b>la fuerza de la caída está disminuyendo</b>. Los vendedores se están agotando. Históricamente, este patrón precede reversiones alcistas.';
-    } else {
-      h += 'El precio marcó un <b>nuevo máximo más alto</b>, pero el RSI NO lo confirmó (hizo un máximo más bajo). Esto significa que aunque el precio subió más, <b>la fuerza de la suba se está debilitando</b>. Los compradores se están agotando. Históricamente, este patrón precede correcciones.';
+    h += '<div style="margin-top:10px;padding:8px 12px;border-radius:var(--r);background:' + (dB?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)') + ';border:1px solid ' + (dB?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)') + '">';
+    h += '<b style="color:' + (dB?'var(--green)':'var(--red)') + '">🔄 Divergencia ' + (dB?'alcista':'bajista') + ' RSI:</b> ';
+    h += '<span style="font-size:12px;color:var(--text-s)">' + (dB?'Precio cae pero RSI sube — los vendedores se agotan. Señal de posible reversión.':'Precio sube pero RSI baja — los compradores se agotan. Señal de posible techo.') + '</span>';
+    h += '</div>';
+  }
+  h += '</div></div>';
+
+  // ── BLOQUE 4: PROYECCIONES ────────────────────────────────────────────────
+  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:4px">📅 Proyecciones de precio</div>';
+  // Global prob banner
+  var bullP = proj.bullProb || 50; var bearP = proj.bearProb || 50;
+  var moreUp = bullP >= bearP;
+  var probC = moreUp ? 'var(--green)' : 'var(--red)';
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px;border-radius:var(--r);background:' + (moreUp?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)') + ';border:1px solid ' + (moreUp?'rgba(34,197,94,0.3)':'rgba(239,68,68,0.3)') + '">';
+  h += '<span style="font-size:18px">' + (moreUp?'📈':'📉') + '</span>';
+  h += '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:' + probC + '">' + (moreUp?'MÁS PROBABLE QUE SUBA':'MÁS PROBABLE QUE CAIGA') + ' — Convicción ' + esc(proj.conviction||'Baja') + '</div>';
+  h += '<div style="height:6px;border-radius:3px;display:flex;margin-top:5px;overflow:hidden"><div style="width:' + bullP + '%;background:var(--green)"></div><div style="width:' + bearP + '%;background:var(--red)"></div></div>';
+  h += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-top:3px"><span style="color:var(--green)">📈 ' + bullP + '%</span><span style="color:var(--red)">📉 ' + bearP + '%</span></div></div></div>';
+
+  // Horizons: compact cards
+  h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+  ph.forEach(function(hz) {
+    h += '<div style="border:1px solid ' + hz.color + '33;border-radius:var(--r);padding:12px;background:var(--bg-card)">';
+    h += '<div style="font-size:13px;font-weight:700;color:' + hz.color + ';margin-bottom:2px">' + hz.icon + ' ' + hz.label + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:10px">' + hz.period + '</div>';
+    // Up target
+    h += '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:8px;margin-bottom:6px;text-align:center">';
+    h += '<div style="font-size:9px;color:var(--text-t);margin-bottom:2px">🎯 Si sube</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green)">' + fp(hz.consensus_up) + '</div>';
+    h += '<div style="font-size:11px;color:var(--green)">' + pp(hz.consensus_up,cur) + '</div></div>';
+    // Down target
+    h += '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:8px;text-align:center">';
+    h += '<div style="font-size:9px;color:var(--text-t);margin-bottom:2px">⚠️ Si cae</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red)">' + fp(hz.consensus_dn) + '</div>';
+    h += '<div style="font-size:11px;color:var(--red)">' + pp(hz.consensus_dn,cur) + '</div></div>';
+    // Probability chip
+    h += '<div style="margin-top:8px;text-align:center;padding:5px;border-radius:6px;background:' + (moreUp?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)') + '">';
+    h += '<div style="font-size:11px;font-weight:700;color:' + probC + '">' + (moreUp?'↑':'↓') + ' Más probable: ' + (moreUp?bullP:bearP) + '%</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Consenso de 3 métodos</div></div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  // Reason pills
+  h += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px">';
+  (proj.probReasons||[]).forEach(function(r){
+    h += '<span style="font-size:10px;padding:3px 8px;border-radius:99px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-t)">' + esc(r) + '</span>';
+  });
+  h += '</div>';
+  h += '<div style="font-size:10px;color:var(--text-t);margin-top:8px">Métodos: Canal de precio (Weinstein) · Volatilidad histórica (σ×√t) · Niveles técnicos (S/R + Fibonacci) · Vol. diaria: ' + (proj.dailyVolPct||'—') + '%</div>';
+  h += '</div>';
+
+  // ── BLOQUE 5: SOPORTES Y RESISTENCIAS ────────────────────────────────────
+  var allRes = (s.resistances||[]).filter(function(r){ return r.price>cur; }).sort(function(a,b){return a.price-b.price;});
+  var allSup = (s.supports||[]).filter(function(r){ return r.price<cur; }).sort(function(a,b){return b.price-a.price;});
+  var fibRes = [fib.r_236,fib.r_382,fib.r_500].filter(function(v){return v&&v>cur*1.005;}).sort(function(a,b){return a-b;});
+  var fibSup = [fib.r_618,fib.r_786].filter(function(v){return v&&v<cur*0.995;}).sort(function(a,b){return b-a;});
+
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px">';
+  h += '<div style="padding:10px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);background:var(--bg-panel)">📍 Soportes y Resistencias</div>';
+
+  // Build rows
+  var rows = [];
+  allRes.slice(0,3).forEach(function(r,i){ rows.push({lbl:'R'+(i+1),price:r.price,touches:r.touches,up:true,src:'Pivot histórico — tocado '+r.touches+'× en 90 días'}); });
+  fibRes.slice(0,1).forEach(function(v){ if(!rows.some(function(r){return Math.abs(r.price-v)/v<0.015;})){ rows.push({lbl:'Fib',price:v,touches:0,up:true,src:'Nivel Fibonacci — zona técnica de confluencia'}); } });
+  if (ind.ema200 && ind.ema200 > cur*1.005) rows.push({lbl:'EMA',price:ind.ema200,touches:0,up:true,src:'EMA 200 — resistencia de largo plazo'});
+  if (s.high52w > cur*1.005) rows.push({lbl:'52s↑',price:s.high52w,touches:0,up:true,src:'Máximo 52 semanas — resistencia psicológica fuerte'});
+  rows.sort(function(a,b){return a.price-b.price;});
+
+  rows.forEach(function(r){
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.03)">';
+    h += '<div style="display:flex;align-items:center;gap:8px">';
+    h += '<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(239,68,68,0.15);padding:2px 6px;border-radius:4px;min-width:28px;text-align:center">' + esc(r.lbl) + '</span>';
+    h += '<span style="font-size:11px;color:var(--text-s)">' + esc(r.src) + '</span></div>';
+    h += '<div style="text-align:right"><span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--red)">' + fp(r.price) + '</span>';
+    h += ' <span style="font-size:11px;color:var(--red)">' + pp(r.price,cur) + '</span></div></div>';
+  });
+
+  // Current price
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);background:' + s.verdictColor + '18;border-left:4px solid ' + s.verdictColor + '">';
+  h += '<span style="font-size:12px;font-weight:700;color:' + s.verdictColor + '">▶ Precio actual</span>';
+  h += '<span style="font-family:var(--mono);font-size:15px;font-weight:700;color:' + s.verdictColor + '">' + fp(cur) + '</span></div>';
+
+  var supRows = [];
+  allSup.slice(0,3).forEach(function(r,i){ supRows.push({lbl:'S'+(i+1),price:r.price,touches:r.touches,src:'Pivot histórico — rebotó '+r.touches+'× en 90 días'}); });
+  fibSup.slice(0,1).forEach(function(v){ if(!supRows.some(function(r){return Math.abs(r.price-v)/v<0.015;})){ supRows.push({lbl:'Fib',price:v,touches:0,src:'Nivel Fibonacci — zona de soporte técnico'}); } });
+  if (ind.ema200 && ind.ema200 < cur*0.995) supRows.push({lbl:'EMA',price:ind.ema200,touches:0,src:'EMA 200 — soporte de largo plazo más importante'});
+  if (s.low52w < cur*0.995) supRows.push({lbl:'52s↓',price:s.low52w,touches:0,src:'Mínimo 52 semanas — soporte psicológico fuerte'});
+  supRows.sort(function(a,b){return b.price-a.price;});
+
+  supRows.forEach(function(r){
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);background:rgba(34,197,94,0.03)">';
+    h += '<div style="display:flex;align-items:center;gap:8px">';
+    h += '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,0.15);padding:2px 6px;border-radius:4px;min-width:28px;text-align:center">' + esc(r.lbl) + '</span>';
+    h += '<span style="font-size:11px;color:var(--text-s)">' + esc(r.src) + '</span></div>';
+    h += '<div style="text-align:right"><span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--green)">' + fp(r.price) + '</span>';
+    h += ' <span style="font-size:11px;color:var(--green)">' + pp(r.price,cur) + '</span></div></div>';
+  });
+  h += '</div>';
+
+  // ── BLOQUE 6: SEÑALES (colapsable, solo las importantes) ─────────────────
+  var topSigs = (s.signals||[]).filter(function(sg){return sg.weight>=2;});
+  var otherSigs = (s.signals||[]).filter(function(sg){return sg.weight<2;});
+  if (topSigs.length || otherSigs.length) {
+    h += '<div style="margin-bottom:14px">';
+    h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:8px">📋 Señales que más pesan</div>';
+    var catC = {'Weinstein':'#a855f7','Cruce EMAs':'#3b82f6','EMAs':'#3b82f6','MACD':'#f97316','RSI':'#22c55e','Bollinger':'#eab308','OBV':'#14b8a6','Estocástico':'#ec4899','Volumen':'#6366f1','Fibonacci':'#8b5cf6'};
+    h += '<div style="display:flex;flex-direction:column;gap:5px">';
+    topSigs.forEach(function(sig){
+      var cc = catC[sig.category]||'#818a94';
+      var cls = sig.bull===true?'bull':sig.bull===false?'bear':'neutral';
+      h += '<div class="signal-item ' + cls + '" style="padding:8px 12px">';
+      h += '<span style="font-size:9px;padding:1px 6px;border-radius:99px;background:' + cc + '22;color:' + cc + ';border:1px solid ' + cc + '44;flex-shrink:0;white-space:nowrap">' + esc(sig.category) + '</span>';
+      h += '<span style="font-size:13px;flex-shrink:0">' + sig.icon + '</span>';
+      h += '<span style="font-size:11px;color:var(--text)">' + esc(sig.text) + '</span>';
+      h += '</div>';
+    });
+    if (otherSigs.length) {
+      h += '<details style="margin-top:4px"><summary style="font-size:11px;color:var(--text-t);cursor:pointer;padding:4px 0">+ ' + otherSigs.length + ' señales secundarias</summary>';
+      h += '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">';
+      otherSigs.forEach(function(sig){
+        var cc = catC[sig.category]||'#818a94';
+        var cls = sig.bull===true?'bull':sig.bull===false?'bear':'neutral';
+        h += '<div class="signal-item ' + cls + '" style="padding:7px 12px;opacity:0.8">';
+        h += '<span style="font-size:9px;padding:1px 6px;border-radius:99px;background:' + cc + '22;color:' + cc + ';border:1px solid ' + cc + '44;flex-shrink:0">' + esc(sig.category) + '</span>';
+        h += '<span style="font-size:13px;flex-shrink:0">' + sig.icon + '</span>';
+        h += '<span style="font-size:11px;color:var(--text-s)">' + esc(sig.text) + '</span>';
+        h += '</div>';
+      });
+      h += '</div></details>';
     }
     h += '</div></div>';
   }
 
-  // ── 7. PROYECCIONES DE PRECIO — MEDIANO Y LARGO PLAZO ──────────────────────
-  var proj = s.projections || {};
-  var ph = proj.horizons || [];
-  var bullP = proj.bullProb || 50;
-  var bearP = proj.bearProb || 50;
-  var conv  = proj.conviction || 'Baja';
-  var moreP = proj.moreProb || 'neutral';
-
-  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
-  h += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">📅 Proyecciones de precio — Mediano y Largo Plazo</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:4px">Calculadas con 3 estrategias técnicas independientes usando datos históricos reales de los últimos 365 días. Las proyecciones se basan en el canal de precio (Weinstein), la volatilidad histórica real del activo y los niveles técnicos clave.</div>';
-  h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:14px">Vol. diaria histórica: <b>' + (proj.dailyVolPct||'—') + '%</b> · Pendiente MA30 (60d): <b>' + (proj.ma30Slope > 0 ? '+' : '') + (proj.ma30Slope||0) + '%</b> · Posición en rango anual: <b>' + (proj.posInRange52||50) + '%</b></div>';
-
-  // Probabilidad global
-  var probC = bullP >= bearP ? 'var(--green)' : 'var(--red)';
-  var probLbl = bullP >= bearP ? '📈 MÁS PROBABLE QUE SUBA' : '📉 MÁS PROBABLE QUE CAIGA';
-  h += '<div style="background:' + (bullP>=bearP?'rgba(34,197,94,0.1)':'rgba(239,68,68,0.1)') + ';border:2px solid ' + (bullP>=bearP?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';border-radius:var(--r);padding:14px;margin-bottom:14px">';
-  h += '<div style="font-size:14px;font-weight:700;color:' + probC + ';margin-bottom:8px">' + probLbl + ' <span style="font-size:11px;font-weight:400;color:var(--text-t)">— Convicción ' + esc(conv) + '</span></div>';
-  h += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:var(--green);font-weight:600">📈 Probabilidad alcista: ' + bullP + '%</span><span style="color:var(--red);font-weight:600">📉 Probabilidad bajista: ' + bearP + '%</span></div>';
-  h += '<div style="height:12px;border-radius:6px;overflow:hidden;display:flex"><div style="width:' + bullP + '%;background:var(--green)"></div><div style="width:' + bearP + '%;background:var(--red)"></div></div></div>';
-  h += '<div style="display:flex;flex-direction:column;gap:4px">';
-  (proj.probReasons||[]).forEach(function(r){ h += '<div style="font-size:11px;color:var(--text-s);display:flex;gap:6px"><span style="color:' + probC + ';flex-shrink:0">›</span><span>' + esc(r) + '</span></div>'; });
-  h += '</div></div>';
-
-  // Cada horizonte
-  ph.forEach(function(hz) {
-    var bullishDir = bullP >= bearP;
-    var mainUp = hz.consensus_up;
-    var mainDn = hz.consensus_dn;
-    var probForThisDir = bullishDir ? bullP : bearP;
-    var oppProb = 100 - probForThisDir;
-
-    h += '<div style="border:1px solid ' + hz.color + '44;border-radius:var(--rl);padding:14px;margin-bottom:12px;background:var(--bg-card)">';
-
-    // Header
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
-    h += '<div style="font-size:24px">' + hz.icon + '</div>';
-    h += '<div style="flex:1"><div style="font-size:15px;font-weight:700;color:' + hz.color + '">' + hz.label + ' <span style="font-size:11px;font-weight:400;color:var(--text-t)">(' + hz.period + ')</span></div>';
-    h += '<div style="font-size:11px;color:var(--text-t)">' + hz.desc + '</div></div>';
-    // Mini probability chip
-    h += '<div style="padding:4px 12px;border-radius:99px;background:' + (bullishDir?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)') + ';border:1px solid ' + (bullishDir?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';font-size:11px;font-weight:600;color:' + (bullishDir?'var(--green)':'var(--red)') + '">' + (bullishDir?'↑':'↓') + ' ' + probForThisDir + '%</div>';
-    h += '</div>';
-
-    // 3 precios principales: baja / actual / sube
-    h += '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;margin-bottom:14px">';
-    // Downside
-    h += '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:var(--r);padding:12px;text-align:center">';
-    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">⚠️ Si cae</div>';
-    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--red)">' + fp(mainDn) + '</div>';
-    h += '<div style="font-size:11px;color:var(--red);margin-top:2px">' + pp(mainDn,cur) + '</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Prob: ' + oppProb + '%</div></div>';
-    // Current
-    h += '<div style="text-align:center;padding:8px"><div style="font-size:9px;color:var(--text-t)">Hoy</div><div style="font-family:var(--mono);font-size:12px;color:var(--text-s)">' + fp(cur) + '</div></div>';
-    // Upside
-    h += '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);border-radius:var(--r);padding:12px;text-align:center">';
-    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">🎯 Si sube</div>';
-    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">' + fp(mainUp) + '</div>';
-    h += '<div style="font-size:11px;color:var(--green);margin-top:2px">' + pp(mainUp,cur) + '</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-top:4px">Prob: ' + probForThisDir + '%</div></div>';
-    h += '</div>';
-
-    // Detalle de los 3 métodos
-    h += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:8px">Detalle por estrategia</div>';
-    h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">';
-
-    // Método 1: Canal de precio
-    h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:8px">';
-    h += '<div style="font-size:10px;font-weight:600;color:#8b5cf6;margin-bottom:4px">📊 Canal Weinstein</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:6px">Amplitud histórica del canal de tendencia sobre MA30</div>';
-    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--green)">↑ ' + fp(hz.chan_up) + '</span></div>';
-    h += '<div style="font-size:10px;color:var(--text-t)">Centro: ' + fp(hz.chan_center) + '</div>';
-    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--red)">↓ ' + fp(hz.chan_dn) + '</span></div></div>';
-
-    // Método 2: Volatilidad histórica
-    h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:8px">';
-    h += '<div style="font-size:10px;font-weight:600;color:#3b82f6;margin-bottom:4px">📐 Volatilidad (1.5σ)</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:6px">Desv. estándar histórica × √días (87% de probabilidad)</div>';
-    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--green)">↑ ' + fp(hz.vol_up) + '</span></div>';
-    h += '<div style="font-size:10px;color:var(--text-t)">Rango: ±' + hz.vol_pct + '%</div>';
-    h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--red)">↓ ' + fp(hz.vol_dn) + '</span></div></div>';
-
-    // Método 3: Niveles técnicos
-    h += '<div style="border:1px solid var(--border);border-radius:var(--r);padding:8px">';
-    h += '<div style="font-size:10px;font-weight:600;color:#f97316;margin-bottom:4px">📍 Niveles técnicos</div>';
-    h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:6px">Pivot S/R + Fibonacci calculados con datos reales</div>';
-    if (hz.tech_up) { h += '<div style="font-size:11px;font-family:var(--mono)"><span style="color:var(--green)">↑ ' + fp(hz.tech_up) + '</span></div>'; h += '<div style="font-size:9px;color:var(--text-t)">' + esc(hz.tech_up_label||'') + '</div>'; }
-    if (hz.tech_dn) { h += '<div style="font-size:11px;font-family:var(--mono);margin-top:4px"><span style="color:var(--red)">↓ ' + fp(hz.tech_dn) + '</span></div>'; h += '<div style="font-size:9px;color:var(--text-t)">' + esc(hz.tech_dn_label||'') + '</div>'; }
-    h += '</div></div>';
-
-    // Notas de estrategia
-    h += '<div style="background:var(--bg-hover);border-radius:var(--r);padding:8px">';
-    h += '<div style="font-size:10px;color:var(--text-t);font-weight:600;margin-bottom:4px">📝 Base técnica</div>';
-    (hz.strategy_notes||[]).forEach(function(note) {
-      h += '<div style="font-size:10px;color:var(--text-t);display:flex;gap:5px;margin-bottom:2px"><span>·</span><span>' + esc(note) + '</span></div>';
-    });
-    h += '</div>';
-    h += '</div>';
-  });
-
-  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:8px;border-top:1px solid var(--border);margin-top:4px;line-height:1.6">⚠️ Las proyecciones usan datos históricos reales del activo analizado. Factores externos (noticias, regulaciones, macro) pueden alterar estos rangos significativamente. El consenso es el promedio de los 3 métodos.</div>';
+  // ── FOOTER ────────────────────────────────────────────────────────────────
+  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:10px;background:var(--bg-card);border-radius:var(--r);border:1px solid var(--border);line-height:1.7">';
+  h += '⚠️ Análisis técnico informativo — no es asesoramiento financiero.<br>';
+  h += 'Analizado: ' + (s.analyzedAt?new Date(s.analyzedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'-') + ' · ' + (s.barsCount||0) + ' días de datos históricos';
   h += '</div>';
 
-  // ── 8. SOPORTES Y RESISTENCIAS ───────────────────────────────────────────
-  var allRes = (s.resistances||[]).filter(function(r){ return r.price > cur; }).sort(function(a,b){return a.price-b.price;});
-  var allSup = (s.supports||[]).filter(function(r){ return r.price < cur; }).sort(function(a,b){return b.price-a.price;});
-
-  // Fibonacci levels above and below
-  var fibRes = [fib.r_236, fib.r_382, fib.r_500].filter(function(v){ return v && v > cur*1.005; }).sort(function(a,b){return a-b;});
-  var fibSup = [fib.r_500, fib.r_618, fib.r_786, fib.r_1000].filter(function(v){ return v && v < cur*0.995; }).sort(function(a,b){return b-a;});
-
-  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:16px;margin-bottom:14px">';
-  h += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">📍 Soportes y Resistencias</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:14px">Los soportes son pisos donde el precio históricamente frenó o rebotó. Las resistencias son techos donde el precio fue rechazado. <b>Cuantas más veces fue tocado un nivel, más fuerte es.</b> Cuando el precio rompe una resistencia, esta pasa a ser soporte y viceversa.</div>';
-
-  // Visual price ladder
-  h += '<div style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px">';
-
-  // Header
-  h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);padding:8px 12px;background:var(--bg-card);border-bottom:1px solid var(--border)">';
-  h += '<span>Tipo</span><span>Nivel</span><span>Precio</span><span>Distancia</span><span>Fortaleza</span></div>';
-
-  // Resistances (top to bottom = highest to lowest)
-  var resRows = [];
-  allRes.slice(0,4).forEach(function(r, i) {
-    resRows.push({ type:'R'+(i+1), price:r.price, touches:r.touches, isRes:true, source:'Pivot' });
-  });
-  // Add Fibonacci resistances not already covered
-  fibRes.slice(0,2).forEach(function(v, i) {
-    var already = resRows.some(function(r){ return Math.abs(r.price-v)/v < 0.015; });
-    if (!already) resRows.push({ type:'Fib', price:v, touches:0, isRes:true, source:'Fibonacci' });
-  });
-  // Max 52w
-  if (s.high52w > cur*1.005) {
-    var already = resRows.some(function(r){ return Math.abs(r.price-s.high52w)/s.high52w < 0.01; });
-    if (!already) resRows.push({ type:'Máx', price:s.high52w, touches:0, isRes:true, source:'52 semanas' });
-  }
-  resRows.sort(function(a,b){ return a.price-b.price; }); // lowest first (closest to price)
-
-  // EMA resistances
-  if (ind.ema50 && ind.ema50 > cur*1.005) resRows.unshift({ type:'EMA', price:ind.ema50, touches:0, isRes:true, source:'EMA 50' });
-  if (ind.ema200 && ind.ema200 > cur*1.005) resRows.unshift({ type:'EMA', price:ind.ema200, touches:0, isRes:true, source:'EMA 200' });
-  resRows.sort(function(a,b){ return a.price-b.price; });
-
-  resRows.slice(0,5).forEach(function(r) {
-    var dist = pp(r.price, cur);
-    var strength = r.touches >= 3 ? '🔴🔴🔴 Fuerte' : r.touches >= 2 ? '🔴🔴 Moderada' : r.source==='EMA 200'||r.source==='52 semanas' ? '🔴🔴 Clave' : '🔴 Débil';
-    var why = r.source==='EMA 50' ? 'Media móvil 50 días — seguida por fondos institucionales' :
-              r.source==='EMA 200' ? 'Media móvil 200 días — la más importante de largo plazo' :
-              r.source==='52 semanas' ? 'Máximo del último año — resistencia psicológica fuerte' :
-              r.source==='Fibonacci' ? 'Nivel Fibonacci — zona técnica de alta confluencia' :
-              'Precio rechazado ' + r.touches + '× en esta zona en los últimos 90 días';
-    h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:center;background:rgba(239,68,68,0.04)">';
-    h += '<span style="font-size:10px;font-weight:700;color:var(--red);background:rgba(239,68,68,0.15);padding:2px 6px;border-radius:4px;text-align:center">' + esc(r.type) + '</span>';
-    h += '<span style="font-size:11px;color:var(--text-s);padding:0 8px">' + esc(why) + '</span>';
-    h += '<span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--red)">' + fp(r.price) + '</span>';
-    h += '<span style="font-size:12px;color:var(--red)">' + dist + '</span>';
-    h += '<span style="font-size:10px;color:var(--text-t)">' + strength + '</span>';
-    h += '</div>';
-  });
-
-  // Current price row (highlighted)
-  h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;padding:12px 12px;border-bottom:1px solid var(--border);align-items:center;background:' + s.verdictColor + '15;border-left:3px solid ' + s.verdictColor + '">';
-  h += '<span style="font-size:10px;font-weight:700;color:' + s.verdictColor + ';background:' + s.verdictColor + '22;padding:2px 6px;border-radius:4px;text-align:center">HOY</span>';
-  h += '<span style="font-size:12px;font-weight:600;color:' + s.verdictColor + ';padding:0 8px">' + s.verdictIcon + ' Precio actual — ' + esc(s.stage||'') + '</span>';
-  h += '<span style="font-family:var(--mono);font-size:14px;font-weight:700;color:' + s.verdictColor + '">' + fp(cur) + '</span>';
-  h += '<span style="font-size:12px;color:var(--text-t)">—</span>';
-  h += '<span style="font-size:10px;color:var(--text-t)">' + esc(s.verdict||'') + '</span>';
-  h += '</div>';
-
-  // Supports (highest to lowest = closest to price first)
-  var supRows = [];
-  allSup.slice(0,4).forEach(function(r, i) {
-    supRows.push({ type:'S'+(i+1), price:r.price, touches:r.touches, isRes:false, source:'Pivot' });
-  });
-  fibSup.slice(0,2).forEach(function(v, i) {
-    var already = supRows.some(function(r){ return Math.abs(r.price-v)/v < 0.015; });
-    if (!already) supRows.push({ type:'Fib', price:v, touches:0, isRes:false, source:'Fibonacci' });
-  });
-  if (s.low52w < cur*0.995) {
-    var already = supRows.some(function(r){ return Math.abs(r.price-s.low52w)/s.low52w < 0.01; });
-    if (!already) supRows.push({ type:'Mín', price:s.low52w, touches:0, isRes:false, source:'52 semanas' });
-  }
-  if (ind.ema50 && ind.ema50 < cur*0.995) supRows.push({ type:'EMA', price:ind.ema50, touches:0, isRes:false, source:'EMA 50' });
-  if (ind.ema200 && ind.ema200 < cur*0.995) supRows.push({ type:'EMA', price:ind.ema200, touches:0, isRes:false, source:'EMA 200' });
-  supRows.sort(function(a,b){ return b.price-a.price; }); // closest first
-
-  supRows.slice(0,5).forEach(function(r) {
-    var dist = pp(r.price, cur);
-    var strength = r.touches >= 3 ? '🟢🟢🟢 Fuerte' : r.touches >= 2 ? '🟢🟢 Moderado' : r.source==='EMA 200'||r.source==='52 semanas' ? '🟢🟢 Clave' : '🟢 Débil';
-    var why = r.source==='EMA 50' ? 'Media móvil 50 días — soporte dinámico institucional' :
-              r.source==='EMA 200' ? 'Media móvil 200 días — soporte de largo plazo fundamental' :
-              r.source==='52 semanas' ? 'Mínimo del último año — soporte psicológico fuerte' :
-              r.source==='Fibonacci' ? 'Nivel Fibonacci — zona técnica de alta confluencia' :
-              'Precio rebotó ' + r.touches + '× desde esta zona en los últimos 90 días';
-    h += '<div style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px;padding:10px 12px;border-bottom:1px solid var(--border);align-items:center;background:rgba(34,197,94,0.04)">';
-    h += '<span style="font-size:10px;font-weight:700;color:var(--green);background:rgba(34,197,94,0.15);padding:2px 6px;border-radius:4px;text-align:center">' + esc(r.type) + '</span>';
-    h += '<span style="font-size:11px;color:var(--text-s);padding:0 8px">' + esc(why) + '</span>';
-    h += '<span style="font-family:var(--mono);font-size:13px;font-weight:600;color:var(--green)">' + fp(r.price) + '</span>';
-    h += '<span style="font-size:12px;color:var(--green)">' + dist + '</span>';
-    h += '<span style="font-size:10px;color:var(--text-t)">' + strength + '</span>';
-    h += '</div>';
-  });
-
-  h += '</div>'; // close table
-
-  // What to watch
-  var nearestRes = resRows[0];
-  var nearestSup = supRows[0];
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
-  h += '<div style="padding:12px;border-radius:var(--r);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2)">';
-  h += '<div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px">⚠️ Si el precio sube — qué observar</div>';
-  if (nearestRes) {
-    h += '<div style="font-size:12px;color:var(--text-s)">La primera resistencia está en <b style="color:var(--red)">' + fp(nearestRes.price) + '</b> (' + pp(nearestRes.price,cur) + '). ';
-    h += 'Si el precio llega ahí y <b>no puede cerrar por encima</b> en vela diaria, puede rebotar a la baja. ';
-    h += 'Si lo rompe con volumen alto, la resistencia pasa a ser soporte y el próximo objetivo es ' + (resRows[1] ? fp(resRows[1].price) : 'el máximo anual') + '.</div>';
-  }
-  h += '</div>';
-  h += '<div style="padding:12px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2)">';
-  h += '<div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">✅ Si el precio cae — qué observar</div>';
-  if (nearestSup) {
-    h += '<div style="font-size:12px;color:var(--text-s)">El primer soporte está en <b style="color:var(--green)">' + fp(nearestSup.price) + '</b> (' + pp(nearestSup.price,cur) + '). ';
-    h += 'Si el precio llega ahí y <b>rebota con volumen</b>, puede ser una buena zona de entrada. ';
-    h += 'Si lo pierde con vela de cierre abajo, el siguiente soporte es ' + (supRows[1] ? fp(supRows[1].price) : 'el mínimo anual') + '.</div>';
-  }
-  h += '</div>';
-  h += '</div>';
-  h += '</div>';
-
-  // ── 9. ESCENARIOS CON PROBABILIDAD ────────────────────────────────────────
-  h += '<div style="margin-bottom:14px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:4px">📊 Escenarios posibles — qué puede pasar y por qué</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Basados en el análisis técnico actual. <b>Ninguno es certeza</b> — son probabilidades históricas según los patrones detectados. Pueden cambiar si el mercado recibe nueva información.</div>';
-  h += '<div class="scenario-grid">';
-  scn.forEach(function(sc) {
-    var probText = sc.probability || 'Media';
-    var probW = probText==='Alta'?'90%':probText==='Media-Alta'?'70%':probText==='Media'?'50%':probText==='Baja'?'25%':'40%';
-    var probC = probText==='Alta'?'var(--green)':probText==='Media-Alta'?'#86efac':probText==='Baja'?'var(--red)':'var(--amber)';
-    h += '<div style="border:1px solid ' + sc.color + '33;border-radius:var(--rl);padding:16px;background:var(--bg-card)">';
-    h += '<div style="font-size:15px;margin-bottom:6px">' + sc.icon + ' <span style="font-size:14px;font-weight:700;color:' + sc.color + '">' + esc(sc.label) + '</span></div>';
-    // Probability bar
-    h += '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px"><span style="color:var(--text-t)">Probabilidad</span><span style="color:' + probC + ';font-weight:600">' + probText + '</span></div>';
-    h += '<div style="height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden"><div style="width:' + probW + ';height:100%;background:' + sc.color + ';border-radius:3px"></div></div></div>';
-    if (sc.target) h += '<div style="font-family:var(--mono);font-size:15px;color:' + sc.color + ';margin-bottom:6px">' + esc(sc.target) + ' <span style="font-size:12px;color:var(--text-t)">' + esc(sc.targetPct||'') + '</span></div>';
-    h += '<div style="font-size:11px;color:var(--text-s);font-style:italic;margin-bottom:8px;line-height:1.5">' + esc(sc.condition) + '</div>';
-    h += '<div style="font-size:11px;color:var(--text-s);line-height:1.6">';
-    (sc.triggers||[]).filter(Boolean).forEach(function(t) {
-      h += '<div style="display:flex;gap:6px;margin-bottom:5px"><span style="color:' + sc.color + ';flex-shrink:0;font-weight:600">›</span><span>' + esc(t) + '</span></div>';
-    });
-    h += '</div></div>';
-  });
-  h += '</div></div>';
-
-  // ── 10. SEÑALES DETALLADAS ────────────────────────────────────────────────
-  h += '<div style="margin-bottom:14px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-s);margin-bottom:4px">📋 Detalle completo de señales</div>';
-  h += '<div style="font-size:11px;color:var(--text-s);margin-bottom:10px">Cada estrategia genera una señal. El score acumula todas las señales — cuantas más apunten en la misma dirección, más confiable es el análisis.</div>';
-  var catColors = {'Weinstein':'#a855f7','Cruce EMAs':'#3b82f6','EMAs':'#3b82f6','MACD':'#f97316','RSI':'#22c55e','Bollinger':'#eab308','OBV':'#14b8a6','Estocástico':'#ec4899','Volumen':'#6366f1','Fibonacci':'#8b5cf6'};
-  h += '<div style="display:flex;flex-direction:column;gap:6px">';
-  sigs.forEach(function(sig) {
-    var cc = catColors[sig.category] || '#818a94';
-    var cls = sig.bull===true?'bull':sig.bull===false?'bear':'neutral';
-    h += '<div class="signal-item ' + cls + '" style="padding:10px 12px;align-items:flex-start">';
-    h += '<span style="font-size:9px;padding:2px 7px;border-radius:99px;background:' + cc + '22;color:' + cc + ';border:1px solid ' + cc + '44;flex-shrink:0;white-space:nowrap;margin-top:1px">' + esc(sig.category) + '</span>';
-    h += '<span style="font-size:14px;flex-shrink:0">' + sig.icon + '</span>';
-    h += '<div style="flex:1"><div style="font-size:12px;color:var(--text);line-height:1.5">' + esc(sig.text) + '</div>';
-    if (sig.weight > 1) h += '<div style="font-size:10px;color:var(--text-t);margin-top:2px">Importancia: ' + '★'.repeat(Math.min(sig.weight,4)) + ' (' + sig.weight + '/4)</div>';
-    h += '</div></div>';
-  });
-  h += '</div></div>';
-
-  // ── 11. DISCLAIMER ────────────────────────────────────────────────────────
-  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:12px;background:var(--bg-card);border-radius:var(--r);border:1px solid var(--border);line-height:1.8">';
-  h += '⚠️ <b>Este análisis es educativo e informativo.</b> No es asesoramiento financiero ni garantía de resultados futuros.<br>';
-  h += 'El análisis técnico estima probabilidades basadas en patrones históricos. El mercado puede comportarse diferente por factores externos.<br>';
-  h += 'Estrategias: Stage Analysis (Weinstein) · MACD (Appel) · Bollinger Bands · RSI (Wilder) · OBV (Granville) · Estocástico (Lane) · Fibonacci · ATR';
-  h += '</div>';
-  h += '</div>';
+  h += '</div>'; // close signal-card
   return h;
 }
 
-function indBox(value, label, color, explanation, what, who) {
-  var h = '';
-  h += '<div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--rl);padding:14px;margin-bottom:10px">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
-  h += '<div style="display:flex;align-items:center;gap:10px">';
-  h += '<div style="font-family:var(--mono);font-size:20px;font-weight:700;color:' + color + '">' + esc(value) + '</div>';
-  h += '<div style="font-size:12px;font-weight:600;color:' + color + ';padding:3px 10px;border-radius:99px;background:' + color.replace('var','').replace('(','').replace(')','') + '22;border:1px solid ' + color + '44">' + esc(label) + '</div>';
-  h += '</div></div>';
-  h += '<div style="font-size:12px;color:var(--text-s);line-height:1.7;margin-bottom:8px">' + explanation + '</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:8px;border-top:1px solid var(--border)">';
-  h += '<div style="font-size:10px;color:var(--text-t)"><b style="color:var(--text-s)">¿Qué es?</b> ' + esc(what) + '</div>';
-  h += '<div style="font-size:10px;color:var(--text-t)"><b style="color:var(--text-s)">Origen:</b> ' + esc(who) + '</div>';
-  h += '</div></div>';
-  return h;
-}
 function ps(n, cur) {
   if (!n || !cur) return '';
   var p = ((n - cur) / cur * 100);
