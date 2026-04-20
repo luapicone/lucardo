@@ -1263,29 +1263,96 @@ async function analyzeFutures(sym) {
   if (score >= 4 && hasPrimBull) dir = 'LONG';
   else if (score <= -4 && hasPrimBear) dir = 'SHORT';
 
-  // ── ENTRY / TP / SL ─────────────────────────────────────
-  // Basados en ATR 4H y niveles de OB/estructura
-  let entry = cur, tp1 = null, tp2 = null, sl = null, rr = null;
+  // ── ENTRY / TP / SL — Metodología ICT correcta ──────────
+  //
+  // REGLAS:
+  // 1. ENTRY: precio actual o mitad del OB si precio está en él
+  // 2. SL: bajo el OB/swing low (LONG) o sobre el OB/swing high (SHORT)
+  //    con un buffer de 0.5×ATR para evitar stop hunts
+  //    Mínimo garantizado: 1×ATR (nunca SL más chico que eso)
+  // 3. TP: se calculan sobre NIVELES NATURALES (swing highs/lows)
+  //    TP1 → swing high/low inmediato = R:R mínimo 1.5:1
+  //    TP2 → swing high/low extendido = R:R mínimo 3:1
+  //    Si no hay swing natural, se usa ATR×2.5 y ATR×5
+  // 4. Leverage: max 1% de liquidación sobre SL distance
+
+  const atrPct = (atr4h / cur) * 100;
+  let entry = cur, tp1 = null, tp2 = null, sl = null, rr1 = null, rr2 = null;
+
+  // Swing highs/lows reales de las últimas 20 velas 4H (excluyendo actual)
+  const recentHighs = h4.slice(n4-20, n4-1);
+  const recentLows  = l4.slice(n4-20, n4-1);
+  // Filtramos niveles significativos (alejados del precio actual)
+  const swHighsAbove = recentHighs.filter(v => v > cur * 1.002).sort((a,b)=>a-b);
+  const swLowsBelow  = recentLows.filter(v => v < cur * 0.998).sort((a,b)=>b-a);
+
   if (dir === 'LONG') {
-    entry = inBullOB ? +Math.min(cur, bullOB.high).toFixed(4) : cur;
-    sl    = inBullOB ? +(bullOB.low * 0.999).toFixed(4) : +(entry - atr4h * 1.5).toFixed(4);
+    // Entry: si precio está en el OB, entrar en el mid del OB; si no, precio actual
+    entry = (inBullOB && bullOB) ? +((bullOB.high + bullOB.low) / 2).toFixed(4) : +cur.toFixed(4);
+
+    // SL: bajo el OB (si existe y es significativo) o bajo swing low + buffer 0.5×ATR
+    let rawSL;
+    if (inBullOB && bullOB && (entry - bullOB.low) >= atr4h * 0.8) {
+      // OB tiene suficiente ancho — SL bajo el OB con buffer
+      rawSL = bullOB.low - atr4h * 0.5;
+    } else if (swLowsBelow.length > 0) {
+      // Swing low más cercano por debajo
+      rawSL = swLowsBelow[0] - atr4h * 0.3;
+    } else {
+      // Fallback: 1.5×ATR bajo entry
+      rawSL = entry - atr4h * 1.5;
+    }
+    // Garantizar SL mínimo de 1×ATR
+    sl = +Math.min(rawSL, entry - atr4h).toFixed(4);
+
     const risk = entry - sl;
-    tp1 = +(entry + risk * 1.5).toFixed(4); // TP1: 1.5R
-    tp2 = +(entry + risk * 3.0).toFixed(4); // TP2: 3R (objetivo extendido)
-    rr  = 1.5;
+
+    // TP1: primer swing high por encima (mínimo 1.5R)
+    const tp1Natural = swHighsAbove.find(h => h >= entry + risk * 1.5);
+    tp1 = tp1Natural ? +tp1Natural.toFixed(4) : +(entry + risk * 2).toFixed(4);
+
+    // TP2: swing high más lejano (mínimo 3R) o ATR×5
+    const tp2Natural = swHighsAbove.find(h => h >= entry + risk * 3);
+    tp2 = tp2Natural ? +tp2Natural.toFixed(4) : +(entry + risk * 3.5).toFixed(4);
+
+    rr1 = +((tp1 - entry) / risk).toFixed(2);
+    rr2 = +((tp2 - entry) / risk).toFixed(2);
+
   } else if (dir === 'SHORT') {
-    entry = inBearOB ? +Math.max(cur, bearOB.low).toFixed(4) : cur;
-    sl    = inBearOB ? +(bearOB.high * 1.001).toFixed(4) : +(entry + atr4h * 1.5).toFixed(4);
+    entry = (inBearOB && bearOB) ? +((bearOB.high + bearOB.low) / 2).toFixed(4) : +cur.toFixed(4);
+
+    let rawSL;
+    if (inBearOB && bearOB && (bearOB.high - entry) >= atr4h * 0.8) {
+      rawSL = bearOB.high + atr4h * 0.5;
+    } else if (swHighsAbove.length > 0) {
+      rawSL = swHighsAbove[0] + atr4h * 0.3;
+    } else {
+      rawSL = entry + atr4h * 1.5;
+    }
+    // Garantizar SL mínimo de 1×ATR
+    sl = +Math.max(rawSL, entry + atr4h).toFixed(4);
+
     const risk = sl - entry;
-    tp1 = +(entry - risk * 1.5).toFixed(4);
-    tp2 = +(entry - risk * 3.0).toFixed(4);
-    rr  = 1.5;
+
+    const tp1Natural = swLowsBelow.find(l => l <= entry - risk * 1.5);
+    tp1 = tp1Natural ? +tp1Natural.toFixed(4) : +(entry - risk * 2).toFixed(4);
+
+    const tp2Natural = swLowsBelow.find(l => l <= entry - risk * 3);
+    tp2 = tp2Natural ? +tp2Natural.toFixed(4) : +(entry - risk * 3.5).toFixed(4);
+
+    rr1 = +((entry - tp1) / risk).toFixed(2);
+    rr2 = +((entry - tp2) / risk).toFixed(2);
   }
 
-  // Leverage: conservador según volatilidad 4H
-  const atrPct = (atr4h / cur) * 100;
-  const leverage = atrPct > 3 ? 3 : atrPct > 2 ? 5 : atrPct > 1 ? 8 : atrPct > 0.5 ? 12 : 15;
-  const liqDist  = +(100 / leverage).toFixed(1);
+  // Leverage: basado en distancia real del SL (nunca liquidar antes del SL)
+  // Si SL está a 2% → max leverage 30x; si está a 5% → max 15x
+  const slDistPct = sl ? Math.abs(entry - sl) / entry * 100 : atrPct;
+  // Max leverage tal que liquidación sea a 1.5× la distancia del SL
+  const maxLevByRisk = Math.floor(100 / (slDistPct * 1.5));
+  // Cap conservador según volatilidad del activo
+  const volCap = atrPct > 4 ? 3 : atrPct > 2.5 ? 5 : atrPct > 1.5 ? 8 : atrPct > 0.8 ? 12 : 15;
+  const leverage = Math.min(maxLevByRisk, volCap, 20);
+  const liqDist = +(100 / leverage).toFixed(1);
 
   let verdict, verdictColor, verdictIcon;
   if (dir === 'LONG')  { verdict='LONG';    verdictColor='#22c55e'; verdictIcon='🟢'; }
@@ -1297,7 +1364,7 @@ async function analyzeFutures(sym) {
     currentPrice: +cur.toFixed(6),
     verdict, verdictColor, verdictIcon,
     score, bullScore:bull, bearScore:bear, dir,
-    entry, tp1, tp2, sl, rr, leverage, liqDist,
+    entry, tp1, tp2, sl, rr1, rr2, leverage, liqDist, slDistPct: +slDistPct.toFixed(2),
     atr4h: +atr4h.toFixed(6), atrPct: +atrPct.toFixed(3),
     indicators4h: {
       ema8: e8?+e8.toFixed(4):null, ema21: e21?+e21.toFixed(4):null,

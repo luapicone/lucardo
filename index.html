@@ -1017,41 +1017,59 @@ function buildFuturesCard(s) {
     var dirC = isLong ? 'var(--green)' : 'var(--red)';
     h += '<div style="background:' + (isLong?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)') + ';border:2px solid ' + (isLong?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';border-radius:var(--rl);padding:14px;margin-bottom:14px">';
     h += '<div style="font-size:13px;font-weight:700;color:' + dirC + ';margin-bottom:12px">' + (isLong?'🟢 SETUP LONG':'🔴 SETUP SHORT') + ' — Estrategia: ICT Confluencia Multi-Timeframe</div>';
-    h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">';
-    // Entry
-    h += '<div style="text-align:center;padding:10px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r)">';
-    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">Entry</div>';
-    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#60a5fa">' + fp(s.entry) + '</div></div>';
-    // TP1
-    h += '<div style="text-align:center;padding:10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:var(--r)">';
-    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">TP1 (1.5R)</div>';
-    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--green)">' + fp(s.tp1) + '</div>';
-    h += '<div style="font-size:10px;color:var(--green)">' + pp(s.tp1,s.entry) + '</div></div>';
-    // TP2
-    h += '<div style="text-align:center;padding:10px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:var(--r)">';
-    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">TP2 (3R)</div>';
-    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#86efac">' + fp(s.tp2) + '</div>';
-    h += '<div style="font-size:10px;color:#86efac">' + pp(s.tp2,s.entry) + '</div></div>';
-    // SL
-    h += '<div style="text-align:center;padding:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r)">';
-    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">Stop Loss</div>';
-    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--red)">' + fp(s.sl) + '</div>';
-    h += '<div style="font-size:10px;color:var(--red)">' + pp(s.sl,s.entry) + '</div></div>';
+    var isLong2 = s.dir === 'LONG';
+    var slDist = s.slDistPct ? s.slDistPct.toFixed(2) : '—';
+    var tp1Pct = s.entry && s.tp1 ? ((Math.abs(s.tp1-s.entry)/s.entry)*100).toFixed(2) : '—';
+    var tp2Pct = s.entry && s.tp2 ? ((Math.abs(s.tp2-s.entry)/s.entry)*100).toFixed(2) : '—';
+    var slPct  = s.entry && s.sl  ? ((Math.abs(s.sl-s.entry)/s.entry)*100).toFixed(2)  : '—';
+
+    // Visual entry→TP→SL scale
+    h += '<div style="background:var(--bg-hover);border-radius:var(--r);padding:10px 12px;margin-bottom:10px;font-size:11px;color:var(--text-s)">';
+    h += '<b>Lógica del trade:</b> ';
+    if (isLong2) h += 'Entrás en <b style="color:#60a5fa">' + fp(s.entry) + '</b> · Tu riesgo es <b style="color:var(--red)">-' + slPct + '%</b> si cae a SL · Tu ganancia es <b style="color:var(--green)">+' + tp1Pct + '%</b> en TP1 y <b style="color:#86efac">+' + tp2Pct + '%</b> en TP2.';
+    else h += 'Entrás en <b style="color:#60a5fa">' + fp(s.entry) + '</b> · Tu riesgo es <b style="color:var(--red)">+' + slPct + '%</b> si sube a SL · Tu ganancia es <b style="color:var(--green)">-' + tp1Pct + '%</b> en TP1 y <b style="color:#86efac">-' + tp2Pct + '%</b> en TP2.';
     h += '</div>';
-    // Leverage + ATR
+
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px">';
+    // Entry
+    h += '<div style="text-align:center;padding:12px 8px;background:rgba(59,130,246,0.1);border:2px solid rgba(59,130,246,0.4);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#93c5fd;margin-bottom:4px">🎯 Entry</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:#60a5fa">' + fp(s.entry) + '</div>';
+    h += '<div style="font-size:10px;color:#93c5fd;margin-top:2px">Precio de entrada</div></div>';
+    // TP1
+    h += '<div style="text-align:center;padding:12px 8px;background:rgba(34,197,94,0.1);border:2px solid rgba(34,197,94,0.4);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#86efac;margin-bottom:4px">✅ TP1</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green)">' + fp(s.tp1) + '</div>';
+    h += '<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:2px">' + (isLong2?'+':'-') + tp1Pct + '%</div>';
+    h += '<div style="font-size:10px;color:#86efac">R:R = 1:' + (s.rr1||'—') + ' · Cerrar 50%</div></div>';
+    // TP2
+    h += '<div style="text-align:center;padding:12px 8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.25);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#86efac;margin-bottom:4px">🎯 TP2</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:#86efac">' + fp(s.tp2) + '</div>';
+    h += '<div style="font-size:11px;color:#86efac;font-weight:600;margin-top:2px">' + (isLong2?'+':'-') + tp2Pct + '%</div>';
+    h += '<div style="font-size:10px;color:#86efac">R:R = 1:' + (s.rr2||'—') + ' · Cerrar resto</div></div>';
+    // SL
+    h += '<div style="text-align:center;padding:12px 8px;background:rgba(239,68,68,0.1);border:2px solid rgba(239,68,68,0.4);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#fca5a5;margin-bottom:4px">🛑 Stop Loss</div>';
+    h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red)">' + fp(s.sl) + '</div>';
+    h += '<div style="font-size:11px;color:var(--red);font-weight:600;margin-top:2px">' + (isLong2?'-':'+') + slPct + '%</div>';
+    h += '<div style="font-size:10px;color:#fca5a5">Salida si el setup falla</div></div>';
+    h += '</div>';
+
+    // Leverage + info row
     h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
-    h += '<div style="padding:8px 12px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:var(--r)">';
+    h += '<div style="padding:10px 12px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:var(--r)">';
     h += '<div style="font-size:10px;color:var(--text-t)">Leverage sugerido</div>';
-    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--amber)">' + s.leverage + 'x</div>';
-    h += '<div style="font-size:10px;color:var(--text-t)">Liquidación a -' + s.liqDist + '%</div></div>';
-    h += '<div style="padding:8px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">';
-    h += '<div style="font-size:10px;color:var(--text-t)">R:R mínimo</div>';
-    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">1:' + s.rr + '</div>';
-    h += '<div style="font-size:10px;color:var(--text-t)">Relación riesgo/recompensa</div></div>';
-    h += '<div style="padding:8px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">';
-    h += '<div style="font-size:10px;color:var(--text-t)">ATR 4H (volatilidad)</div>';
-    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text)">' + fp(s.atr4h) + '</div>';
-    h += '<div style="font-size:10px;color:var(--text-t)">' + s.atrPct + '% del precio</div></div>';
+    h += '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--amber)">' + (s.leverage||'—') + 'x</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Liquidación a -' + s.liqDist + '% (> SL)</div></div>';
+    h += '<div style="padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">';
+    h += '<div style="font-size:10px;color:var(--text-t)">Riesgo real del trade</div>';
+    h += '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--red)">-' + slPct + '%</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Usar máx 1-2% de tu capital</div></div>';
+    h += '<div style="padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">';
+    h += '<div style="font-size:10px;color:var(--text-t)">ATR 4H (volatilidad real)</div>';
+    h += '<div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--text)">' + fp(s.atr4h) + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">' + s.atrPct + '% del precio por vela</div></div>';
     h += '</div></div>';
   } else {
     h += '<div style="padding:14px;border-radius:var(--r);background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.3);margin-bottom:14px;text-align:center">';
