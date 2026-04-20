@@ -1017,11 +1017,53 @@ function buildProjections({ bars, closes, highs, lows, cur, n,
 
 async function fetchKlinesFutures(sym, interval, limit) {
   const pair = sym.endsWith('USDT') ? sym : sym + 'USDT';
-  const bybitInterval = {'4h':'240','12h':'720','1h':'60','15m':'15'}[interval]||'240';
 
-  // 1. Bybit (principal para futuros)
+  // 1. KuCoin — funciona desde servidores cloud, buena disponibilidad
   try {
-    const r = await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${pair}&interval=${bybitInterval}&limit=${limit}`);
+    const kuInterval = {'4h':'4hour','12h':'12hour','1h':'1hour','15m':'15min'}[interval]||'4hour';
+    const end = Math.floor(Date.now()/1000);
+    // KuCoin max por request es 1500, calculamos startAt según intervalo
+    const secPerBar = {'4h':14400,'12h':43200,'1h':3600,'15m':900}[interval]||14400;
+    const start = end - limit * secPerBar * 1.1;
+    const r = await fetch(
+      `https://api.kucoin.com/api/v1/market/candles?type=${kuInterval}&symbol=${pair.replace('USDT','-USDT')}&startAt=${Math.floor(start)}&endAt=${end}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (r.ok) {
+      const d = await r.json();
+      if (d?.data?.length > 10) {
+        // KuCoin devuelve [time, open, close, high, low, volume, amount] en orden DESC
+        return d.data.reverse().map(k=>({
+          time:+k[0]*1000, open:+k[1], close:+k[2], high:+k[3], low:+k[4], volume:+k[5]
+        }));
+      }
+    }
+  } catch {}
+
+  // 2. OKX — otra exchange sin restricción de IPs cloud
+  try {
+    const okxBar = {'4h':'4H','12h':'12H','1h':'1H','15m':'15m'}[interval]||'4H';
+    const r = await fetch(
+      `https://www.okx.com/api/v5/market/candles?instId=${pair.replace('USDT','-USDT-SWAP')}&bar=${okxBar}&limit=${limit}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (r.ok) {
+      const d = await r.json();
+      if (d?.data?.length > 10) {
+        return d.data.reverse().map(k=>({
+          time:+k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5]
+        }));
+      }
+    }
+  } catch {}
+
+  // 3. Bybit como tercer intento
+  try {
+    const bybitInterval = {'4h':'240','12h':'720','1h':'60','15m':'15'}[interval]||'240';
+    const r = await fetch(
+      `https://api.bybit.com/v5/market/kline?category=linear&symbol=${pair}&interval=${bybitInterval}&limit=${limit}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
     if (r.ok) {
       const d = await r.json();
       const list = d?.result?.list;
@@ -1031,22 +1073,13 @@ async function fetchKlinesFutures(sym, interval, limit) {
     }
   } catch {}
 
-  // 2. Binance Futures
+  // 4. Binance Spot (sin restricción para endpoints públicos básicos)
   try {
     const binInterval = {'4h':'4h','12h':'12h','1h':'1h','15m':'15m'}[interval]||'4h';
-    const r = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${pair}&interval=${binInterval}&limit=${limit}`);
-    if (r.ok) {
-      const d = await r.json();
-      if (Array.isArray(d) && d.length > 10) return d.map(k=>({
-        time:+k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5]
-      }));
-    }
-  } catch {}
-
-  // 3. Binance Spot como fallback
-  try {
-    const binInterval = {'4h':'4h','12h':'12h','1h':'1h','15m':'15m'}[interval]||'4h';
-    const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${binInterval}&limit=${limit}`);
+    const r = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${binInterval}&limit=${limit}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
     if (r.ok) {
       const d = await r.json();
       if (Array.isArray(d) && d.length > 10) return d.map(k=>({
