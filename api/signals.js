@@ -20,10 +20,11 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { ticker, type } = req.body || {};
+  const { ticker, type, mode } = req.body || {};
   if (!ticker) return res.status(400).json({ error: 'Ticker requerido' });
 
   try {
+    if (mode === 'futures') return res.status(200).json(await analyzeFutures(ticker.toUpperCase()));
     const result = await analyzeFull(ticker.toUpperCase(), type || 'auto');
     return res.status(200).json(result);
   } catch (err) {
@@ -1007,3 +1008,280 @@ function buildProjections({ bars, closes, highs, lows, cur, n,
     ],
   };
 }
+
+// ─────────────────────────────────────────────────────────
+// ANÁLISIS DE FUTUROS — Multi-Timeframe 4H + 12H
+// Estrategia: ICT Confluencia + Estructura de Mercado (BOS/CHoCH)
+// Fuentes: Bybit → Binance → KuCoin
+// ─────────────────────────────────────────────────────────
+
+async function fetchKlinesFutures(sym, interval, limit) {
+  const pair = sym.endsWith('USDT') ? sym : sym + 'USDT';
+  const bybitInterval = {'4h':'240','12h':'720','1h':'60','15m':'15'}[interval]||'240';
+
+  // 1. Bybit (principal para futuros)
+  try {
+    const r = await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${pair}&interval=${bybitInterval}&limit=${limit}`);
+    if (r.ok) {
+      const d = await r.json();
+      const list = d?.result?.list;
+      if (list?.length > 10) return list.reverse().map(k=>({
+        time:+k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5]
+      }));
+    }
+  } catch {}
+
+  // 2. Binance Futures
+  try {
+    const binInterval = {'4h':'4h','12h':'12h','1h':'1h','15m':'15m'}[interval]||'4h';
+    const r = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${pair}&interval=${binInterval}&limit=${limit}`);
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d) && d.length > 10) return d.map(k=>({
+        time:+k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5]
+      }));
+    }
+  } catch {}
+
+  // 3. Binance Spot como fallback
+  try {
+    const binInterval = {'4h':'4h','12h':'12h','1h':'1h','15m':'15m'}[interval]||'4h';
+    const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${binInterval}&limit=${limit}`);
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d) && d.length > 10) return d.map(k=>({
+        time:+k[0], open:+k[1], high:+k[2], low:+k[3], close:+k[4], volume:+k[5]
+      }));
+    }
+  } catch {}
+
+  return null;
+}
+
+async function analyzeFutures(sym) {
+  const ticker = sym.toUpperCase().replace('USDT','');
+  const pair = ticker + 'USDT';
+
+  // Fetch 4H (50 velas = ~8 días) y 12H (30 velas = ~15 días) en paralelo
+  const [bars4h, bars12h] = await Promise.all([
+    fetchKlinesFutures(ticker, '4h', 50),
+    fetchKlinesFutures(ticker, '12h', 30),
+  ]);
+
+  if (!bars4h || bars4h.length < 20) {
+    return { error: `No se encontraron datos para ${ticker}. Usá el símbolo base sin USDT (ej: BTC, ETH, SOL, BNB, XRP).`, ticker };
+  }
+
+  const n4 = bars4h.length;
+  const c4 = bars4h.map(b=>b.close), h4 = bars4h.map(b=>b.high), l4 = bars4h.map(b=>b.low), v4 = bars4h.map(b=>b.volume);
+  const cur = c4[n4-1];
+  const prev = c4[n4-2];
+
+  // ── INDICADORES 4H ──────────────────────────────────────
+  const ema21_4h  = calcEMA(c4, 21);
+  const ema8_4h   = calcEMA(c4, 8);
+  const macd4h    = calcMACD(c4);
+  const rsi4h     = calcRSI(c4, 14);
+  const atr4h_arr = calcATR(bars4h, 14);
+  const stoch4h   = calcStochastic(h4, l4, c4, 14, 3);
+  const vol20_4h  = calcSMA(v4, 20);
+
+  const e21  = ema21_4h[n4-1];
+  const e8   = ema8_4h[n4-1];
+  const e8p  = ema8_4h[n4-2];
+  const macdLine4h = macd4h.macdLine[n4-1];
+  const macdSig4h  = macd4h.signalLine[n4-1];
+  const macdHist4h = macd4h.histogram[n4-1];
+  const macdHistP  = macd4h.histogram[n4-2];
+  const rsi4hCur   = rsi4h[n4-1];
+  const atr4h      = atr4h_arr[n4-1] || cur * 0.01;
+  const stochK4h   = stoch4h.k[n4-1];
+  const stochD4h   = stoch4h.d[n4-1];
+  const volCur4h   = v4[n4-1];
+  const volAvg4h   = vol20_4h[n4-1];
+  const volRatio4h = volAvg4h > 0 ? volCur4h / volAvg4h : 1;
+
+  // ── CONTEXTO 12H ────────────────────────────────────────
+  let ctx12h = null;
+  if (bars12h && bars12h.length >= 15) {
+    const n12 = bars12h.length;
+    const c12 = bars12h.map(b=>b.close), h12 = bars12h.map(b=>b.high), l12 = bars12h.map(b=>b.low);
+    const ema50_12 = calcEMA(c12, 21); // 21 en 12H ≈ 50 en 4H
+    const ema21_12 = calcEMA(c12, 10);
+    const rsi12    = calcRSI(c12, 14);
+
+    // VWAP de las últimas 10 velas 12H
+    let cumTPV = 0, cumVol = 0;
+    bars12h.slice(-10).forEach(b => { const tp=(b.high+b.low+b.close)/3; cumTPV+=tp*b.volume; cumVol+=b.volume; });
+    const vwap12h = cumVol > 0 ? cumTPV / cumVol : cur;
+
+    // Estructura de mercado 12H: Higher Highs / Lower Lows
+    const hhLast = Math.max(...h12.slice(-6));
+    const llLast = Math.min(...l12.slice(-6));
+    const hhPrev = Math.max(...h12.slice(-12, -6));
+    const llPrev = Math.min(...l12.slice(-12, -6));
+    const bullStructure = hhLast > hhPrev && llLast > llPrev; // HH + HL
+    const bearStructure = hhLast < hhPrev && llLast < llPrev; // LH + LL
+
+    ctx12h = {
+      ema50: ema50_12[n12-1],
+      ema21: ema21_12[n12-1],
+      rsi:   rsi12[n12-1],
+      vwap:  +vwap12h.toFixed(4),
+      bullStructure,
+      bearStructure,
+      aboveVwap: cur > vwap12h,
+      cur: c12[n12-1],
+    };
+  }
+
+  // ── ESTRUCTURA DE MERCADO 4H (BOS/CHoCH) ────────────────
+  // Break of Structure (BOS): precio rompe máximo/mínimo previo
+  // Change of Character (CHoCH): señal temprana de reversión
+  const swingLookback = 8;
+  const swingHigh4h = Math.max(...h4.slice(n4-swingLookback-1, n4-1));
+  const swingLow4h  = Math.min(...l4.slice(n4-swingLookback-1, n4-1));
+  const prevSwingH  = Math.max(...h4.slice(n4-swingLookback*2-1, n4-swingLookback-1));
+  const prevSwingL  = Math.min(...l4.slice(n4-swingLookback*2-1, n4-swingLookback-1));
+
+  const bos_bull  = cur > swingHigh4h && prev <= swingHigh4h; // Rompe resistencia → BOS alcista
+  const bos_bear  = cur < swingLow4h  && prev >= swingLow4h;  // Rompe soporte → BOS bajista
+  const choch_bull = swingLow4h > prevSwingL && cur > e21;    // HL + sobre EMA21 → CHoCH alcista
+  const choch_bear = swingHigh4h < prevSwingH && cur < e21;   // LH + bajo EMA21 → CHoCH bajista
+
+  // ── ORDER BLOCK 4H ──────────────────────────────────────
+  // Última vela bajista antes de impulso alcista fuerte, y viceversa
+  let bullOB = null, bearOB = null;
+  for (let i = n4-3; i > Math.max(n4-20, 1); i--) {
+    const b = bars4h[i];
+    const fwd = c4[Math.min(i+3, n4-1)];
+    if (!bullOB && b.close < b.open && (fwd-b.close)/atr4h > 1.5)
+      bullOB = { high:+b.open.toFixed(4), low:+b.close.toFixed(4), mid:+((b.open+b.close)/2).toFixed(4) };
+    if (!bearOB && b.close > b.open && (b.close-fwd)/atr4h > 1.5)
+      bearOB = { high:+b.close.toFixed(4), low:+b.open.toFixed(4), mid:+((b.open+b.close)/2).toFixed(4) };
+    if (bullOB && bearOB) break;
+  }
+
+  // ── FAIR VALUE GAP 4H ───────────────────────────────────
+  let bullFVG = null, bearFVG = null;
+  for (let i = 1; i < n4-1; i++) {
+    const gapSize = Math.abs(l4[i+1] - h4[i-1]);
+    if (!bullFVG && l4[i+1] > h4[i-1] && gapSize > atr4h*0.3)
+      bullFVG = { low:+h4[i-1].toFixed(4), high:+l4[i+1].toFixed(4) };
+    if (!bearFVG && h4[i+1] < l4[i-1] && gapSize > atr4h*0.3)
+      bearFVG = { high:+l4[i-1].toFixed(4), low:+h4[i+1].toFixed(4) };
+  }
+
+  // ── SCORING (pesos por importancia) ─────────────────────
+  let bull = 0, bear = 0;
+  const sigs = [];
+
+  // Peso 4: Estructura de mercado (señal primaria)
+  if (bos_bull)  { sigs.push({icon:'🏗️',text:'BOS alcista en 4H: precio rompió el swing high $'+swingHigh4h.toFixed(2)+'. Cambio de estructura confirmado.',bull:true,w:4}); bull+=4; }
+  if (bos_bear)  { sigs.push({icon:'🏗️',text:'BOS bajista en 4H: precio rompió el swing low $'+swingLow4h.toFixed(2)+'. Estructura bajista confirmada.',bull:false,w:4}); bear+=4; }
+  if (choch_bull && !bos_bull) { sigs.push({icon:'🔄',text:'CHoCH alcista: Higher Low formado + precio sobre EMA21. Posible inicio de reversión al alza.',bull:true,w:3}); bull+=3; }
+  if (choch_bear && !bos_bear) { sigs.push({icon:'🔄',text:'CHoCH bajista: Lower High formado + precio bajo EMA21. Posible inicio de reversión a la baja.',bull:false,w:3}); bear+=3; }
+
+  // Peso 3: Contexto 12H
+  if (ctx12h) {
+    if (ctx12h.bullStructure) { sigs.push({icon:'📊',text:'Contexto 12H alcista: Higher Highs + Higher Lows. La tendencia de fondo favorece largos.',bull:true,w:3}); bull+=3; }
+    if (ctx12h.bearStructure) { sigs.push({icon:'📊',text:'Contexto 12H bajista: Lower Highs + Lower Lows. La tendencia de fondo favorece cortos.',bull:false,w:3}); bear+=3; }
+    if (ctx12h.aboveVwap) { sigs.push({icon:'🏦',text:'Precio sobre VWAP 12H ($'+ctx12h.vwap+'). Zona institucional compradora.',bull:true,w:2}); bull+=2; }
+    else { sigs.push({icon:'🏦',text:'Precio bajo VWAP 12H ($'+ctx12h.vwap+'). Zona institucional vendedora.',bull:false,w:2}); bear+=2; }
+  }
+
+  // Peso 3: Order Block (solo si el precio está en él)
+  const inBullOB = bullOB && cur >= bullOB.low*0.998 && cur <= bullOB.high*1.003;
+  const inBearOB = bearOB && cur >= bearOB.low*0.997 && cur <= bearOB.high*1.002;
+  if (inBullOB) { sigs.push({icon:'📦',text:'Precio en Order Block alcista ($'+bullOB.low+'-$'+bullOB.high+'). Zona de demanda institucional activa.',bull:true,w:3}); bull+=3; }
+  if (inBearOB) { sigs.push({icon:'📦',text:'Precio en Order Block bajista ($'+bearOB.low+'-$'+bearOB.high+'). Zona de oferta institucional activa.',bull:false,w:3}); bear+=3; }
+
+  // Peso 2: MACD 4H
+  const macdCross_up   = macdLine4h > macdSig4h  && macd4h.macdLine[n4-2] <= macd4h.signalLine[n4-2];
+  const macdCross_down = macdLine4h < macdSig4h  && macd4h.macdLine[n4-2] >= macd4h.signalLine[n4-2];
+  if (macdCross_up)   { sigs.push({icon:'⚡',text:'MACD cruzó al alza en 4H. Cambio de momentum a positivo.',bull:true,w:2}); bull+=2; }
+  if (macdCross_down) { sigs.push({icon:'⚡',text:'MACD cruzó a la baja en 4H. Cambio de momentum a negativo.',bull:false,w:2}); bear+=2; }
+  else if (macdLine4h > macdSig4h && macdHist4h > macdHistP) { sigs.push({icon:'📈',text:'MACD sobre señal y acelerando en 4H. Momentum alcista en expansión.',bull:true,w:1}); bull+=1; }
+  else if (macdLine4h < macdSig4h && macdHist4h < macdHistP) { sigs.push({icon:'📉',text:'MACD bajo señal y acelerando en 4H. Momentum bajista en expansión.',bull:false,w:1}); bear+=1; }
+
+  // Peso 2: EMA 8 > 21 (tendencia 4H)
+  if (e8 > e21 && cur > e8) { sigs.push({icon:'📈',text:'Precio > EMA8 > EMA21 en 4H. Alineación alcista en el timeframe operativo.',bull:true,w:2}); bull+=2; }
+  else if (e8 < e21 && cur < e8) { sigs.push({icon:'📉',text:'Precio < EMA8 < EMA21 en 4H. Alineación bajista en el timeframe operativo.',bull:false,w:2}); bear+=2; }
+
+  // Peso 2: FVG (solo si precio está dentro)
+  const inBullFVG = bullFVG && cur >= bullFVG.low && cur <= bullFVG.high;
+  const inBearFVG = bearFVG && cur >= bearFVG.low && cur <= bearFVG.high;
+  if (inBullFVG) { sigs.push({icon:'🕳️',text:'Precio en Fair Value Gap alcista ($'+bullFVG.low+'-$'+bullFVG.high+'). Imbalance institucional — tendencia a rellenar al alza.',bull:true,w:2}); bull+=2; }
+  if (inBearFVG) { sigs.push({icon:'🕳️',text:'Precio en Fair Value Gap bajista ($'+bearFVG.low+'-$'+bearFVG.high+'). Imbalance — tendencia a rellenar a la baja.',bull:false,w:2}); bear+=2; }
+
+  // Peso 1: RSI y volumen
+  if (rsi4hCur < 35)       { sigs.push({icon:'🟢',text:'RSI 4H en '+rsi4hCur.toFixed(1)+' — sobreventa. Posible rebote técnico.',bull:true,w:1}); bull+=1; }
+  else if (rsi4hCur > 65)  { sigs.push({icon:'🔴',text:'RSI 4H en '+rsi4hCur.toFixed(1)+' — sobrecompra. Riesgo de corrección.',bull:false,w:1}); bear+=1; }
+  if (stochK4h < 20 && stochK4h > stochD4h) { sigs.push({icon:'⚡',text:'Estocástico 4H: K('+stochK4h.toFixed(0)+') cruzó arriba de D en sobreventa. Señal de entrada.',bull:true,w:1}); bull+=1; }
+  if (stochK4h > 80 && stochK4h < stochD4h) { sigs.push({icon:'⚡',text:'Estocástico 4H: K('+stochK4h.toFixed(0)+') cruzó abajo de D en sobrecompra. Señal de salida.',bull:false,w:1}); bear+=1; }
+  if (volRatio4h > 1.5 && cur > prev) { sigs.push({icon:'🔊',text:'Volumen '+volRatio4h.toFixed(1)+'x promedio en vela verde. Impulso alcista con convicción.',bull:true,w:1}); bull+=1; }
+  if (volRatio4h > 1.5 && cur < prev) { sigs.push({icon:'🔊',text:'Volumen '+volRatio4h.toFixed(1)+'x promedio en vela roja. Impulso bajista con convicción.',bull:false,w:1}); bear+=1; }
+
+  // ── DECISIÓN: requiere señal de estructura (BOS/CHoCH/OB) ──
+  const score = bull - bear;
+  const hasPrimBull = bos_bull || choch_bull || inBullOB || (ctx12h?.bullStructure && bull > bear);
+  const hasPrimBear = bos_bear || choch_bear || inBearOB || (ctx12h?.bearStructure && bear > bull);
+  let dir = 'NEUTRAL';
+  if (score >= 4 && hasPrimBull) dir = 'LONG';
+  else if (score <= -4 && hasPrimBear) dir = 'SHORT';
+
+  // ── ENTRY / TP / SL ─────────────────────────────────────
+  // Basados en ATR 4H y niveles de OB/estructura
+  let entry = cur, tp1 = null, tp2 = null, sl = null, rr = null;
+  if (dir === 'LONG') {
+    entry = inBullOB ? +Math.min(cur, bullOB.high).toFixed(4) : cur;
+    sl    = inBullOB ? +(bullOB.low * 0.999).toFixed(4) : +(entry - atr4h * 1.5).toFixed(4);
+    const risk = entry - sl;
+    tp1 = +(entry + risk * 1.5).toFixed(4); // TP1: 1.5R
+    tp2 = +(entry + risk * 3.0).toFixed(4); // TP2: 3R (objetivo extendido)
+    rr  = 1.5;
+  } else if (dir === 'SHORT') {
+    entry = inBearOB ? +Math.max(cur, bearOB.low).toFixed(4) : cur;
+    sl    = inBearOB ? +(bearOB.high * 1.001).toFixed(4) : +(entry + atr4h * 1.5).toFixed(4);
+    const risk = sl - entry;
+    tp1 = +(entry - risk * 1.5).toFixed(4);
+    tp2 = +(entry - risk * 3.0).toFixed(4);
+    rr  = 1.5;
+  }
+
+  // Leverage: conservador según volatilidad 4H
+  const atrPct = (atr4h / cur) * 100;
+  const leverage = atrPct > 3 ? 3 : atrPct > 2 ? 5 : atrPct > 1 ? 8 : atrPct > 0.5 ? 12 : 15;
+  const liqDist  = +(100 / leverage).toFixed(1);
+
+  let verdict, verdictColor, verdictIcon;
+  if (dir === 'LONG')  { verdict='LONG';    verdictColor='#22c55e'; verdictIcon='🟢'; }
+  else if (dir === 'SHORT') { verdict='SHORT';   verdictColor='#ef4444'; verdictIcon='🔴'; }
+  else                 { verdict='SIN SETUP'; verdictColor='#eab308'; verdictIcon='⚖️'; }
+
+  return {
+    ticker, pair, mode:'futures',
+    currentPrice: +cur.toFixed(6),
+    verdict, verdictColor, verdictIcon,
+    score, bullScore:bull, bearScore:bear, dir,
+    entry, tp1, tp2, sl, rr, leverage, liqDist,
+    atr4h: +atr4h.toFixed(6), atrPct: +atrPct.toFixed(3),
+    indicators4h: {
+      ema8: e8?+e8.toFixed(4):null, ema21: e21?+e21.toFixed(4):null,
+      rsi: +rsi4hCur.toFixed(1),
+      macdLine: macdLine4h?+macdLine4h.toFixed(4):null,
+      macdHist: macdHist4h?+macdHist4h.toFixed(4):null,
+      stochK: +stochK4h.toFixed(1),
+      volRatio: +volRatio4h.toFixed(2),
+    },
+    structure: { bos_bull, bos_bear, choch_bull, choch_bear },
+    bullOB, bearOB, bullFVG, bearFVG,
+    inBullOB, inBearOB, inBullFVG, inBearFVG,
+    ctx12h,
+    signals: sigs.sort((a,b)=>b.w-a.w),
+    analyzedAt: new Date().toISOString(),
+  };
+}
+
+// Exportar la función para usarla desde el handler
+module.exports._analyzeFutures = analyzeFutures;

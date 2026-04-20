@@ -331,27 +331,41 @@ td.empty-state{text-align:center;padding:20px}
     </section>
 
     <section class="view" id="view-signals">
+      <!-- Mode tabs -->
+      <div style="display:flex;gap:4px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:3px;margin-bottom:10px;width:fit-content">
+        <button id="sig-mode-spot" onclick="setSigMode('spot')" style="padding:6px 16px;border-radius:7px;font-size:12px;font-family:var(--sans);cursor:pointer;border:none;background:var(--blue);color:#fff;font-weight:500">📈 Spot / Análisis</button>
+        <button id="sig-mode-futures" onclick="setSigMode('futures')" style="padding:6px 16px;border-radius:7px;font-size:12px;font-family:var(--sans);cursor:pointer;border:none;background:transparent;color:var(--text-s)">⚡ Futuros 4H</button>
+      </div>
       <div class="sig-controls">
-        <div>
+        <div id="sig-spot-desc" style="display:block">
           <div style="font-size:13px;font-weight:500">Análisis técnico profesional</div>
           <div style="font-size:11px;color:var(--text-t);margin-top:2px">Weinstein · MACD · Bollinger · RSI · OBV · Fibonacci · Pivot S/R</div>
         </div>
+        <div id="sig-futures-desc" style="display:none">
+          <div style="font-size:13px;font-weight:500">Futuros — Contexto 12H + Operativa 4H</div>
+          <div style="font-size:11px;color:var(--text-t);margin-top:2px">Estrategia: ICT Confluencia + BOS/CHoCH + Order Block + FVG · Solo criptos</div>
+        </div>
         <div class="ticker-search">
-          <select id="sig-type-sel" style="background:var(--bg-card);border:1px solid var(--border-md);border-radius:var(--r);padding:6px 10px;font-size:12px;color:var(--text);font-family:var(--sans);outline:none">
-            <option value="auto">Auto-detectar</option>
-            <option value="stock">Acción / ETF</option>
-            <option value="crypto">Cripto</option>
-            <option value="cedear">CEDEAR</option>
-          </select>
+          <div id="sig-spot-type" style="display:block">
+            <select id="sig-type-sel" style="background:var(--bg-card);border:1px solid var(--border-md);border-radius:var(--r);padding:6px 10px;font-size:12px;color:var(--text);font-family:var(--sans);outline:none">
+              <option value="auto">Auto-detectar</option>
+              <option value="stock">Acción / ETF</option>
+              <option value="crypto">Cripto</option>
+              <option value="cedear">CEDEAR</option>
+            </select>
+          </div>
           <input class="ticker-input" id="sig-ticker-input" placeholder="BTC, ETH, AAPL, NVDA, SPY..." maxlength="12"/>
           <button class="icon-btn" id="refresh-signals-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             Analizar
           </button>
+          <button class="icon-btn" id="auto-refresh-btn" title="Auto-refresh cada 30s" style="display:none">
+            ⏱ Auto
+          </button>
         </div>
       </div>
       <!-- Quick tickers -->
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      <div id="qt-spot" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
         <span style="font-size:10px;color:var(--text-t);padding:5px 0;flex-shrink:0">Cripto:</span>
         <button class="qt" data-t="BTC" data-type="crypto">BTC</button>
         <button class="qt" data-t="ETH" data-type="crypto">ETH</button>
@@ -367,6 +381,19 @@ td.empty-state{text-align:center;padding:20px}
         <span style="font-size:10px;color:var(--text-t);padding:5px 4px;flex-shrink:0">CEDEARs:</span>
         <button class="qt" data-t="GGAL" data-type="cedear">GGAL</button>
         <button class="qt" data-t="MELI" data-type="stock">MELI</button>
+      </div>
+      <div id="qt-futures" style="display:none;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+        <span style="font-size:10px;color:var(--text-t);padding:5px 0;flex-shrink:0">Futuros:</span>
+        <button class="qt" data-t="BTC" data-type="futures">BTC</button>
+        <button class="qt" data-t="ETH" data-type="futures">ETH</button>
+        <button class="qt" data-t="SOL" data-type="futures">SOL</button>
+        <button class="qt" data-t="BNB" data-type="futures">BNB</button>
+        <button class="qt" data-t="XRP" data-type="futures">XRP</button>
+        <button class="qt" data-t="DOGE" data-type="futures">DOGE</button>
+        <button class="qt" data-t="AVAX" data-type="futures">AVAX</button>
+        <button class="qt" data-t="LINK" data-type="futures">LINK</button>
+        <button class="qt" data-t="ADA" data-type="futures">ADA</button>
+        <button class="qt" data-t="MATIC" data-type="futures">MATIC</button>
       </div>
       <div id="signals-list"><p class="empty-state">Seleccioná un activo y hacé click en Analizar.</p></div>
     </section>
@@ -570,6 +597,48 @@ function handleDelInc(id){deleteIncome(id);renderAll()}
 
 // ── SIGNALS ──
 let _sigData = null;
+let _sigMode = 'spot';
+let _autoRefreshTimer = null;
+
+function setSigMode(mode) {
+  _sigMode = mode;
+  var isF = mode === 'futures';
+  // Tabs
+  document.getElementById('sig-mode-spot').style.background    = isF ? 'transparent' : 'var(--blue)';
+  document.getElementById('sig-mode-spot').style.color         = isF ? 'var(--text-s)' : '#fff';
+  document.getElementById('sig-mode-futures').style.background = isF ? '#ef4444' : 'transparent';
+  document.getElementById('sig-mode-futures').style.color      = isF ? '#fff' : 'var(--text-s)';
+  // Descriptions
+  document.getElementById('sig-spot-desc').style.display    = isF ? 'none' : 'block';
+  document.getElementById('sig-futures-desc').style.display = isF ? 'block' : 'none';
+  // Type selector
+  document.getElementById('sig-spot-type').style.display = isF ? 'none' : 'block';
+  // Quick tickers
+  document.getElementById('qt-spot').style.display    = isF ? 'none' : 'flex';
+  document.getElementById('qt-futures').style.display = isF ? 'flex' : 'none';
+  // Auto-refresh button
+  document.getElementById('auto-refresh-btn').style.display = isF ? 'inline-flex' : 'none';
+  // Placeholder
+  document.getElementById('sig-ticker-input').placeholder = isF ? 'BTC, ETH, SOL, BNB...' : 'BTC, ETH, AAPL, NVDA, SPY...';
+  // Clear results
+  document.getElementById('signals-list').innerHTML = '<p class="empty-state">Seleccioná un activo y presioná Analizar.</p>';
+  // Stop auto-refresh
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; document.getElementById('auto-refresh-btn').textContent = '⏱ Auto'; document.getElementById('auto-refresh-btn').style.background = ''; }
+}
+
+// Auto-refresh button
+document.getElementById('auto-refresh-btn').addEventListener('click', function() {
+  if (_autoRefreshTimer) {
+    clearInterval(_autoRefreshTimer); _autoRefreshTimer = null;
+    this.textContent = '⏱ Auto'; this.style.background = '';
+  } else {
+    var ticker = document.getElementById('sig-ticker-input').value.trim().toUpperCase();
+    if (!ticker) { alert('Escribí un ticker primero'); return; }
+    this.textContent = '⏹ Parar'; this.style.background = 'rgba(239,68,68,0.2)';
+    _autoRefreshTimer = setInterval(function(){ if (_sigMode === 'futures') runSignal(); }, 30000);
+    runSignal();
+  }
+});
 
 // Wire up quick ticker buttons
 document.querySelectorAll('.qt').forEach(function(b) {
@@ -598,16 +667,17 @@ async function runSignal() {
   el.innerHTML = '<div class="signal-loading">Analizando ' + esc(ticker) + '... esto puede tardar unos segundos.</div>';
   btn.disabled = true; btn.classList.add('spinning');
   try {
+    var payload = _sigMode === 'futures' ? { ticker: ticker, mode: 'futures' } : { ticker: ticker, type: type };
     var r = await fetch('/api/signals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker: ticker, type: type })
+      body: JSON.stringify(payload)
     });
     var s = await r.json();
     btn.disabled = false; btn.classList.remove('spinning');
     if (s.error) { el.innerHTML = '<p class="empty-state" style="color:var(--red)">' + esc(s.error) + '</p>'; return; }
     _sigData = s;
-    el.innerHTML = buildSignalCard(s);
+    el.innerHTML = _sigMode === 'futures' ? buildFuturesCard(s) : buildSignalCard(s);
   } catch(err) {
     btn.disabled = false; btn.classList.remove('spinning');
     el.innerHTML = '<p class="empty-state" style="color:var(--red)">Error de conexión: ' + esc(err.message) + '</p>';
@@ -919,6 +989,154 @@ function ps(n, cur) {
   return (p >= 0 ? '+' : '') + p.toFixed(1) + '%';
 }
 
+
+
+function buildFuturesCard(s) {
+  if (s.error) return '<p class="empty-state" style="color:var(--red)">' + esc(s.error) + '</p>';
+  var cur = s.currentPrice;
+  var vbg = s.dir==='LONG' ? 'rgba(34,197,94,0.15)' : s.dir==='SHORT' ? 'rgba(239,68,68,0.15)' : 'rgba(234,179,8,0.12)';
+  var ind = s.indicators4h || {};
+  var ctx = s.ctx12h || {};
+  var str = s.structure || {};
+  var h = '';
+
+  h += '<div class="signal-card spot-card" style="border-color:' + s.verdictColor + '44">';
+
+  // ── HEADER ─────────────────────────────────────────────────────────────────
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap">';
+  h += '<div><div style="font-size:11px;color:var(--text-t)">Futuros perpetuos · Análisis 4H + 12H · ICT/SMC</div>';
+  h += '<div style="font-size:22px;font-weight:700;font-family:var(--mono);margin-top:2px">' + esc(s.pair) + ' — ' + fp(cur) + '</div>';
+  h += '<div style="font-size:10px;color:var(--text-t);margin-top:2px">Analizado: ' + (s.analyzedAt?new Date(s.analyzedAt).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'-') + '</div></div>';
+  h += '<div style="text-align:right"><div class="verdict-badge" style="color:' + s.verdictColor + ';border-color:' + s.verdictColor + ';background:' + vbg + ';font-size:16px;padding:10px 24px">' + s.verdictIcon + ' ' + esc(s.verdict) + '</div>';
+  if (s.dir !== 'NEUTRAL') h += '<div style="font-size:11px;color:var(--text-t);margin-top:6px">Score: +' + s.bullScore + '↑ / ' + s.bearScore + '↓</div>';
+  h += '</div></div>';
+
+  // ── OPERATIVA (solo si hay setup) ──────────────────────────────────────────
+  if (s.dir !== 'NEUTRAL') {
+    var isLong = s.dir === 'LONG';
+    var dirC = isLong ? 'var(--green)' : 'var(--red)';
+    h += '<div style="background:' + (isLong?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)') + ';border:2px solid ' + (isLong?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';border-radius:var(--rl);padding:14px;margin-bottom:14px">';
+    h += '<div style="font-size:13px;font-weight:700;color:' + dirC + ';margin-bottom:12px">' + (isLong?'🟢 SETUP LONG':'🔴 SETUP SHORT') + ' — Estrategia: ICT Confluencia Multi-Timeframe</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">';
+    // Entry
+    h += '<div style="text-align:center;padding:10px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">Entry</div>';
+    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#60a5fa">' + fp(s.entry) + '</div></div>';
+    // TP1
+    h += '<div style="text-align:center;padding:10px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">TP1 (1.5R)</div>';
+    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--green)">' + fp(s.tp1) + '</div>';
+    h += '<div style="font-size:10px;color:var(--green)">' + pp(s.tp1,s.entry) + '</div></div>';
+    // TP2
+    h += '<div style="text-align:center;padding:10px;background:rgba(34,197,94,0.07);border:1px solid rgba(34,197,94,0.2);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">TP2 (3R)</div>';
+    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:#86efac">' + fp(s.tp2) + '</div>';
+    h += '<div style="font-size:10px;color:#86efac">' + pp(s.tp2,s.entry) + '</div></div>';
+    // SL
+    h += '<div style="text-align:center;padding:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:var(--r)">';
+    h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-t);margin-bottom:4px">Stop Loss</div>';
+    h += '<div style="font-family:var(--mono);font-size:14px;font-weight:700;color:var(--red)">' + fp(s.sl) + '</div>';
+    h += '<div style="font-size:10px;color:var(--red)">' + pp(s.sl,s.entry) + '</div></div>';
+    h += '</div>';
+    // Leverage + ATR
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+    h += '<div style="padding:8px 12px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:var(--r)">';
+    h += '<div style="font-size:10px;color:var(--text-t)">Leverage sugerido</div>';
+    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--amber)">' + s.leverage + 'x</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Liquidación a -' + s.liqDist + '%</div></div>';
+    h += '<div style="padding:8px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">';
+    h += '<div style="font-size:10px;color:var(--text-t)">R:R mínimo</div>';
+    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">1:' + s.rr + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">Relación riesgo/recompensa</div></div>';
+    h += '<div style="padding:8px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r)">';
+    h += '<div style="font-size:10px;color:var(--text-t)">ATR 4H (volatilidad)</div>';
+    h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text)">' + fp(s.atr4h) + '</div>';
+    h += '<div style="font-size:10px;color:var(--text-t)">' + s.atrPct + '% del precio</div></div>';
+    h += '</div></div>';
+  } else {
+    h += '<div style="padding:14px;border-radius:var(--r);background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.3);margin-bottom:14px;text-align:center">';
+    h += '<div style="font-size:16px;font-weight:700;color:var(--amber);margin-bottom:6px">⚖️ SIN SETUP CLARO</div>';
+    h += '<div style="font-size:12px;color:var(--text-s)">Las señales no confluyen suficientemente para dar una entrada de calidad. <b>Esperar mejor momento.</b></div>';
+    h += '<div style="font-size:11px;color:var(--text-t);margin-top:6px">Score: +' + s.bullScore + ' alcistas / ' + s.bearScore + ' bajistas — se necesita diferencia ≥4 con señal primaria</div>';
+    h += '</div>';
+  }
+
+  // ── CONTEXTO 12H + INDICADORES 4H ─────────────────────────────────────────
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">';
+  // Contexto 12H
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">📊 Contexto 12H</div>';
+  if (ctx.bullStructure !== undefined) {
+    var stC = ctx.bullStructure ? 'var(--green)' : ctx.bearStructure ? 'var(--red)' : 'var(--amber)';
+    h += '<div style="font-size:13px;font-weight:700;color:' + stC + ';margin-bottom:8px">' + (ctx.bullStructure?'HH+HL — Alcista':ctx.bearStructure?'LH+LL — Bajista':'Lateral — Sin tendencia') + '</div>';
+    h += row12h('VWAP 12H', fp(ctx.vwap), ctx.aboveVwap ? 'Precio arriba ✅' : 'Precio abajo 🔴', ctx.aboveVwap?'var(--green)':'var(--red)');
+    h += row12h('EMA 21 (12H)', fp(ctx.ema21), ctx.cur > ctx.ema21 ? 'Precio arriba ✅' : 'Precio abajo 🔴', ctx.cur>ctx.ema21?'var(--green)':'var(--red)');
+    h += row12h('RSI 12H', ctx.rsi?ctx.rsi.toFixed(1):'—', ctx.rsi<35?'Sobreventa':ctx.rsi>65?'Sobrecompra':'Neutral', ctx.rsi<35?'var(--green)':ctx.rsi>65?'var(--red)':'var(--text-s)');
+  }
+  h += '</div>';
+  // Indicadores 4H
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">⚡ Indicadores 4H</div>';
+  h += row12h('EMA 8', fp(ind.ema8), cur>ind.ema8?'Precio arriba ✅':'Precio abajo 🔴', cur>ind.ema8?'var(--green)':'var(--red)');
+  h += row12h('EMA 21', fp(ind.ema21), cur>ind.ema21?'Precio arriba ✅':'Precio abajo 🔴', cur>ind.ema21?'var(--green)':'var(--red)');
+  h += row12h('RSI 4H', ind.rsi?ind.rsi.toFixed(1)+'':'—', ind.rsi<35?'Sobreventa':ind.rsi>65?'Sobrecompra':'Neutral', ind.rsi<35?'var(--green)':ind.rsi>65?'var(--red)':'var(--text-s)');
+  h += row12h('MACD hist', ind.macdHist?(ind.macdHist>0?'+':'')+ind.macdHist.toFixed(3):'—', ind.macdHist>0?'Positivo':'Negativo', ind.macdHist>0?'var(--green)':'var(--red)');
+  h += row12h('Estocástico', ind.stochK?ind.stochK.toFixed(0)+'%':'—', ind.stochK<20?'Sobreventa':ind.stochK>80?'Sobrecompra':'Neutral', ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text-s)');
+  h += row12h('Volumen', ind.volRatio?ind.volRatio.toFixed(1)+'x':'—', ind.volRatio>1.5?'Alto':'Normal', ind.volRatio>1.5?'var(--amber)':'var(--text-s)');
+  h += '</div></div>';
+
+  // ── ESTRUCTURA + OB/FVG ────────────────────────────────────────────────────
+  h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">🏗️ Estructura de mercado 4H</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">';
+  // BOS/CHoCH
+  h += '<div style="padding:8px;border-radius:var(--r);border:1px solid var(--border)">';
+  h += '<div style="font-size:10px;font-weight:600;color:var(--text-s);margin-bottom:6px">BOS / CHoCH</div>';
+  if (str.bos_bull)   h += '<div style="font-size:11px;color:var(--green)">✅ BOS Alcista — rompió swing high</div>';
+  if (str.bos_bear)   h += '<div style="font-size:11px;color:var(--red)">🔴 BOS Bajista — rompió swing low</div>';
+  if (str.choch_bull) h += '<div style="font-size:11px;color:var(--green)">↗ CHoCH Alcista — Higher Low formado</div>';
+  if (str.choch_bear) h += '<div style="font-size:11px;color:var(--red)">↘ CHoCH Bajista — Lower High formado</div>';
+  if (!str.bos_bull && !str.bos_bear && !str.choch_bull && !str.choch_bear) h += '<div style="font-size:11px;color:var(--text-t)">Sin cambio de estructura reciente</div>';
+  h += '</div>';
+  // OB y FVG
+  h += '<div style="padding:8px;border-radius:var(--r);border:1px solid var(--border)">';
+  h += '<div style="font-size:10px;font-weight:600;color:var(--text-s);margin-bottom:6px">Order Blocks / FVG</div>';
+  if (s.bullOB) h += '<div style="font-size:11px;color:var(--green)' + (s.inBullOB?';font-weight:700':'') + '">📦 OB Alcista: $' + s.bullOB.low + '-$' + s.bullOB.high + (s.inBullOB?' ← PRECIO ACÁ':'') + '</div>';
+  if (s.bearOB) h += '<div style="font-size:11px;color:var(--red)' + (s.inBearOB?';font-weight:700':'') + '">📦 OB Bajista: $' + s.bearOB.low + '-$' + s.bearOB.high + (s.inBearOB?' ← PRECIO ACÁ':'') + '</div>';
+  if (s.bullFVG) h += '<div style="font-size:11px;color:var(--green)' + (s.inBullFVG?';font-weight:700':'') + '">🕳 FVG Alcista: $' + s.bullFVG.low + '-$' + s.bullFVG.high + (s.inBullFVG?' ← PRECIO ACÁ':'') + '</div>';
+  if (s.bearFVG) h += '<div style="font-size:11px;color:var(--red)' + (s.inBearFVG?';font-weight:700':'') + '">🕳 FVG Bajista: $' + s.bearFVG.low + '-$' + s.bearFVG.high + (s.inBearFVG?' ← PRECIO ACÁ':'') + '</div>';
+  if (!s.bullOB && !s.bearOB && !s.bullFVG && !s.bearFVG) h += '<div style="font-size:11px;color:var(--text-t)">No se detectaron OB/FVG recientes</div>';
+  h += '</div></div></div>';
+
+  // ── SEÑALES ────────────────────────────────────────────────────────────────
+  h += '<div style="margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:8px">📋 Señales detectadas (ordenadas por peso)</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:5px">';
+  (s.signals||[]).forEach(function(sig) {
+    var cls = sig.bull===true?'bull':sig.bull===false?'bear':'neutral';
+    h += '<div class="signal-item ' + cls + '" style="padding:8px 12px">';
+    h += '<span style="font-size:13px;flex-shrink:0">' + sig.icon + '</span>';
+    h += '<span style="font-size:11px;color:var(--text)">' + esc(sig.text) + '</span>';
+    if (sig.w>=3) h += '<span style="font-size:9px;flex-shrink:0;padding:1px 6px;border-radius:99px;background:var(--amber);color:#000;font-weight:700">CLAVE</span>';
+    h += '</div>';
+  });
+  h += '</div></div>';
+
+  // ── DISCLAIMER ─────────────────────────────────────────────────────────────
+  h += '<div style="font-size:10px;color:var(--text-t);text-align:center;padding:10px;background:var(--bg-card);border-radius:var(--r);border:1px solid var(--border);line-height:1.7">';
+  h += '⚠️ <b>Futuros implican riesgo de liquidación total del capital.</b> Nunca usar más del 1-2% del capital por operación.<br>';
+  h += 'Estrategia: ICT Confluencia Multi-Timeframe (Michael Huddleston) + BOS/CHoCH + Order Blocks + FVG.<br>';
+  h += 'Leverages ≥5x son de alto riesgo. El análisis técnico no garantiza resultados.';
+  h += '</div></div>';
+  return h;
+}
+
+function row12h(label, val, state, color) {
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">'
+    + '<span style="font-size:11px;color:var(--text-t)">' + esc(label) + '</span>'
+    + '<div style="text-align:right"><span style="font-family:var(--mono);font-size:12px;color:' + color + '">' + esc(val) + '</span>'
+    + '<span style="font-size:10px;color:' + color + ';margin-left:6px">' + esc(state) + '</span></div></div>';
+}
 
 // -- NEWS --
 let allNews = [];
