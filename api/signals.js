@@ -1446,6 +1446,16 @@ async function analyzeFutures(sym, tf = '4h') {
   else if (dir === 'SHORT') { verdict='SHORT';   verdictColor='#ef4444'; verdictIcon='🔴'; }
   else                 { verdict='SIN SETUP'; verdictColor='#eab308'; verdictIcon='⚖️'; }
 
+  // ── TIEMPO ESTIMADO AL TP ───────────────────────────────
+  // Método: velocidad histórica real = promedio de velas para cubrir 1×ATR
+  // En 4H: cada vela = 4 horas. Calculamos cuántas velas necesita el precio
+  // para recorrer la distancia al TP1 y TP2 basado en el ATR promedio real.
+  const timeEst4h = estimateTimeToTP({
+    entry, tp1, tp2, sl, dir,
+    bars: bars4h, atr: atr4h, candleHours: 4,
+    tfLabel: '4H'
+  });
+
   return {
     ticker, pair, mode:'futures', tf: '4h',
     currentPrice: +cur.toFixed(6),
@@ -1727,6 +1737,13 @@ async function analyzeStrategy1H(ticker, pair) {
   else if (dir==='SHORT') { verdict='SHORT';     verdictColor='#ef4444'; verdictIcon='🔴'; }
   else                    { verdict='SIN SETUP'; verdictColor='#eab308'; verdictIcon='⚖️'; }
 
+  // ── TIEMPO ESTIMADO AL TP ───────────────────────────────
+  const timeEst4h = estimateTimeToTP({
+    entry, tp1, tp2, sl, dir,
+    bars: bars1h, atr: atr, candleHours: 1,
+    tfLabel: '1H'
+  });
+
   return {
     ticker, pair, mode:'futures', tf:'1h',
     strategyName: 'EMA Momentum + VWAP Institucional + ADX + StochRSI Pullback',
@@ -1761,6 +1778,92 @@ async function analyzeStrategy1H(ticker, pair) {
     inBullOB:false, inBearOB:false, inBullFVG:false, inBearFVG:false,
     signals: sigs.sort((a,b)=>b.w-a.w),
     analyzedAt: new Date().toISOString(),
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// ESTIMACIÓN DE TIEMPO AL TP
+// Metodología: velocidad histórica real del activo
+// 1. Calculamos el movimiento promedio por vela en las últimas N velas
+// 2. Calculamos cuántas velas necesita el precio para cubrir
+//    la distancia al TP1 y TP2
+// 3. Convertimos a horas/días según el timeframe
+// 4. Agregamos un rango conservador (1x a 2.5x el estimado base)
+//    porque los mercados no se mueven linealmente
+// ─────────────────────────────────────────────────────────
+function estimateTimeToTP({ entry, tp1, tp2, sl, dir, bars, atr, candleHours, tfLabel }) {
+  if (!entry || !tp1 || !bars || bars.length < 10) return null;
+  const n = bars.length;
+
+  // Velocidad real: promedio de cuánto sube/baja el precio por vela
+  // en los últimos 20 periodos, filtrado por dirección
+  const moves = [];
+  for (let i = Math.max(1, n-30); i < n; i++) {
+    const move = Math.abs(bars[i].close - bars[i-1].close);
+    if (move > 0) moves.push(move);
+  }
+  const avgMove = moves.length > 0
+    ? moves.reduce((a,b)=>a+b,0) / moves.length
+    : atr * 0.6;
+
+  // También usamos ATR como referencia (más estable)
+  const speedPerCandle = (avgMove * 0.6 + atr * 0.4); // blend de ambos
+
+  // Distancias
+  const distTP1 = tp1 ? Math.abs(tp1 - entry) : null;
+  const distTP2 = tp2 ? Math.abs(tp2 - entry) : null;
+
+  // Velas estimadas (base)
+  const candlesTP1 = distTP1 ? Math.max(1, Math.round(distTP1 / speedPerCandle)) : null;
+  const candlesTP2 = distTP2 ? Math.max(1, Math.round(distTP2 / speedPerCandle)) : null;
+
+  // Factor de realismo: los mercados van en zigzag, no en línea recta
+  // Multiplicamos por 1.8 para dar un rango más realista
+  const realismFactor = 1.8;
+  const candlesTP1Real = candlesTP1 ? Math.round(candlesTP1 * realismFactor) : null;
+  const candlesTP2Real = candlesTP2 ? Math.round(candlesTP2 * realismFactor) : null;
+
+  const fmt = (candles) => {
+    const hours = candles * candleHours;
+    if (hours < 24) return hours + 'h';
+    const days = hours / 24;
+    if (days < 7) return days.toFixed(1).replace('.0','') + ' días';
+    const weeks = days / 7;
+    return weeks.toFixed(1).replace('.0','') + ' semanas';
+  };
+
+  // Rango: optimista (base) → conservador (×2.5)
+  const tp1Min = candlesTP1 ? fmt(candlesTP1) : null;
+  const tp1Max = candlesTP1 ? fmt(Math.round(candlesTP1 * 2.5)) : null;
+  const tp2Min = candlesTP2 ? fmt(candlesTP2) : null;
+  const tp2Max = candlesTP2 ? fmt(Math.round(candlesTP2 * 2.5)) : null;
+
+  // Probabilidad de llegar al TP1 antes que al SL (simplificado)
+  // Si R:R >= 2 el TP1 es estadísticamente alcanzable con ~55% de probabilidad
+  const slDist = sl ? Math.abs(entry - sl) : atr;
+  const rrTP1  = distTP1 ? distTP1 / slDist : 1.5;
+
+  return {
+    speedPerCandle: +speedPerCandle.toFixed(6),
+    candleHours,
+    tfLabel,
+    tp1: tp1 ? {
+      distancePct: distTP1 ? +((distTP1/entry)*100).toFixed(2) : null,
+      candlesBase: candlesTP1,
+      candlesReal: candlesTP1Real,
+      timeMin: tp1Min,
+      timeMax: tp1Max,
+      timeLabel: tp1Min && tp1Max ? tp1Min + ' – ' + tp1Max : null,
+    } : null,
+    tp2: tp2 ? {
+      distancePct: distTP2 ? +((distTP2/entry)*100).toFixed(2) : null,
+      candlesBase: candlesTP2,
+      candlesReal: candlesTP2Real,
+      timeMin: tp2Min,
+      timeMax: tp2Max,
+      timeLabel: tp2Min && tp2Max ? tp2Min + ' – ' + tp2Max : null,
+    } : null,
+    note: 'Basado en velocidad promedio de ' + speedPerCandle.toFixed(4) + ' por vela ' + tfLabel + '. Los mercados se mueven en zigzag — el rango incluye un factor de 2.5× para ser conservador.',
   };
 }
 

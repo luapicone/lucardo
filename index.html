@@ -1109,6 +1109,38 @@ function buildFuturesCard(s) {
     h += '<div style="font-size:10px;color:#fca5a5">Salida si el setup falla</div></div>';
     h += '</div>';
 
+    // ── TIEMPO ESTIMADO ──────────────────────────────────────────────────────
+    if (s.timeEst && s.dir !== 'NEUTRAL') {
+      var te = s.timeEst;
+      h += '<div style="background:var(--bg-hover);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:10px">';
+      h += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">⏱ Tiempo estimado para alcanzar los objetivos</div>';
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">';
+      // TP1
+      if (te.tp1 && te.tp1.timeLabel) {
+        h += '<div style="padding:10px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25)">';
+        h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:3px">✅ TP1 — ' + fp(s.tp1) + ' (' + (isLong?'+':'-') + te.tp1.distancePct + '%)</div>';
+        h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">' + esc(te.tp1.timeLabel) + '</div>';
+        h += '<div style="font-size:10px;color:var(--text-t);margin-top:3px">Estimado: ' + (te.tp1.candlesReal||'—') + ' velas ' + esc(te.tfLabel||'') + ' (rango optimista–conservador)</div>';
+        h += '</div>';
+      }
+      // TP2
+      if (te.tp2 && te.tp2.timeLabel) {
+        h += '<div style="padding:10px;border-radius:var(--r);background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15)">';
+        h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:3px">🎯 TP2 — ' + fp(s.tp2) + ' (' + (isLong?'+':'-') + te.tp2.distancePct + '%)</div>';
+        h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:#86efac">' + esc(te.tp2.timeLabel) + '</div>';
+        h += '<div style="font-size:10px;color:var(--text-t);margin-top:3px">Estimado: ' + (te.tp2.candlesReal||'—') + ' velas ' + esc(te.tfLabel||'') + ' (rango optimista–conservador)</div>';
+        h += '</div>';
+      }
+      h += '</div>';
+      // Velocity info + warning
+      h += '<div style="font-size:10px;color:var(--text-t);line-height:1.6">';
+      h += '📐 <b>Método:</b> velocidad promedio del activo en las últimas 30 velas ' + esc(te.tfLabel||'') + ' = <b>' + fp(te.speedPerCandle) + ' por vela</b>. ';
+      h += 'El rango va de <b>optimista</b> (movimiento directo) a <b>conservador</b> (×2.5, mercado en zigzag). ';
+      h += '<br>⚠️ <b>El mercado puede tardar más o menos</b> — noticias, liquidez y sentimiento pueden acelerar o retrasar el movimiento significativamente.';
+      h += '</div>';
+      h += '</div>';
+    }
+
     // Leverage + info row
     h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
     h += '<div style="padding:10px 12px;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:var(--r)">';
