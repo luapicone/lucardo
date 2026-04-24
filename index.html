@@ -342,8 +342,12 @@ td.empty-state{text-align:center;padding:20px}
           <div style="font-size:11px;color:var(--text-t);margin-top:2px">Weinstein · MACD · Bollinger · RSI · OBV · Fibonacci · Pivot S/R</div>
         </div>
         <div id="sig-futures-desc" style="display:none">
-          <div style="font-size:13px;font-weight:500">Futuros — Contexto 12H + Operativa 4H</div>
-          <div style="font-size:11px;color:var(--text-t);margin-top:2px">Estrategia: ICT Confluencia + BOS/CHoCH + Order Block + FVG · Solo criptos</div>
+          <div style="font-size:13px;font-weight:500" id="futures-title-text">Futuros — Contexto 12H + Operativa 4H</div>
+          <div style="font-size:11px;color:var(--text-t);margin-top:2px" id="futures-strat-text">Estrategia: ICT Confluencia + BOS/CHoCH + Order Block + FVG · Solo criptos</div>
+          <div style="display:flex;gap:4px;margin-top:8px" id="tf-selector">
+            <button onclick="setFuturesTF('1h')" id="tf-1h" style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-s)">⚡ 1H</button>
+            <button onclick="setFuturesTF('4h')" id="tf-4h" style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:var(--red);color:#fff;font-weight:600">🔥 4H</button>
+          </div>
         </div>
         <div class="ticker-search">
           <div id="sig-spot-type" style="display:block">
@@ -598,6 +602,7 @@ function handleDelInc(id){deleteIncome(id);renderAll()}
 // ── SIGNALS ──
 let _sigData = null;
 let _sigMode = 'spot';
+let _futuresTF = '4h';
 let _autoRefreshTimer = null;
 
 function setSigMode(mode) {
@@ -640,6 +645,37 @@ document.getElementById('auto-refresh-btn').addEventListener('click', function()
   }
 });
 
+function setFuturesTF(tf) {
+  _futuresTF = tf;
+  var stratInfo = {
+    '1h': {
+      title: 'Futuros — Momentum 1H + Contexto 4H',
+      strat: 'EMA 9/21 Cross · VWAP Institucional · ADX (fuerza) · StochRSI Pullback · Contexto 4H',
+      color: '#f97316'
+    },
+    '4h': {
+      title: 'Futuros — ICT Confluencia 4H + Contexto 12H',
+      strat: 'ICT: BOS/CHoCH · Order Block · Fair Value Gap · EMA 8/21 · VWAP 12H',
+      color: '#ef4444'
+    }
+  };
+  var info = stratInfo[tf] || stratInfo['4h'];
+  document.getElementById('futures-title-text').textContent = info.title;
+  document.getElementById('futures-strat-text').textContent = info.strat;
+  // Update button styles
+  ['1h','4h'].forEach(function(t) {
+    var btn = document.getElementById('tf-'+t);
+    if (!btn) return;
+    btn.style.background = t === tf ? info.color : 'transparent';
+    btn.style.color = t === tf ? '#fff' : 'var(--text-s)';
+    btn.style.fontWeight = t === tf ? '600' : '400';
+    btn.style.borderColor = t === tf ? info.color : 'var(--border)';
+  });
+  // Clear results
+  document.getElementById('signals-list').innerHTML = '<p class="empty-state">Seleccioná un activo y presioná Analizar.</p>';
+  if (_autoRefreshTimer) { clearInterval(_autoRefreshTimer); _autoRefreshTimer = null; document.getElementById('auto-refresh-btn').textContent = '⏱ Auto'; document.getElementById('auto-refresh-btn').style.background = ''; }
+}
+
 // Wire up quick ticker buttons
 document.querySelectorAll('.qt').forEach(function(b) {
   b.addEventListener('click', function() {
@@ -667,7 +703,7 @@ async function runSignal() {
   el.innerHTML = '<div class="signal-loading">Analizando ' + esc(ticker) + '... esto puede tardar unos segundos.</div>';
   btn.disabled = true; btn.classList.add('spinning');
   try {
-    var payload = _sigMode === 'futures' ? { ticker: ticker, mode: 'futures' } : { ticker: ticker, type: type };
+    var payload = _sigMode === 'futures' ? { ticker: ticker, mode: 'futures', tf: _futuresTF } : { ticker: ticker, type: type };
     var r = await fetch('/api/signals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1017,7 +1053,7 @@ function buildFuturesCard(s) {
     var dirC = isLong ? 'var(--green)' : 'var(--red)';
     h += '<div style="background:' + (isLong?'rgba(34,197,94,0.08)':'rgba(239,68,68,0.08)') + ';border:2px solid ' + (isLong?'rgba(34,197,94,0.4)':'rgba(239,68,68,0.4)') + ';border-radius:var(--rl);padding:14px;margin-bottom:14px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
-    h += '<div style="font-size:13px;font-weight:700;color:' + dirC + '">' + (isLong?'🟢 SETUP LONG':'🔴 SETUP SHORT') + ' — ICT Confluencia Multi-Timeframe</div>';
+    h += '<div><div style="font-size:13px;font-weight:700;color:' + dirC + '">' + (isLong?'🟢 SETUP LONG':'🔴 SETUP SHORT') + ' — ' + esc(s.tf==='1h'?'EMA Momentum 1H':'ICT Confluencia 4H') + '</div><div style="font-size:10px;color:var(--text-t);margin-top:2px">' + esc(s.strategyDesc||'') + '</div></div>';
     // Win probability badge
     if (s.winProb) {
       var wc = s.winColor || dirC;
@@ -1100,7 +1136,7 @@ function buildFuturesCard(s) {
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">';
   // Contexto 12H
   h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">📊 Contexto 12H</div>';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">📊 Contexto ' + esc(s.tf==='1h'?'4H':'12H') + '</div>';
   if (ctx.bullStructure !== undefined) {
     var stC = ctx.bullStructure ? 'var(--green)' : ctx.bearStructure ? 'var(--red)' : 'var(--amber)';
     h += '<div style="font-size:13px;font-weight:700;color:' + stC + ';margin-bottom:8px">' + (ctx.bullStructure?'HH+HL — Alcista':ctx.bearStructure?'LH+LL — Bajista':'Lateral — Sin tendencia') + '</div>';
@@ -1111,13 +1147,21 @@ function buildFuturesCard(s) {
   h += '</div>';
   // Indicadores 4H
   h += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);padding:12px">';
-  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">⚡ Indicadores 4H</div>';
+  h += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-s);margin-bottom:10px">⚡ Indicadores ' + esc(s.tf==='1h'?'1H':'4H') + '</div>';
   h += row12h('EMA 8', fp(ind.ema8), cur>ind.ema8?'Precio arriba ✅':'Precio abajo 🔴', cur>ind.ema8?'var(--green)':'var(--red)');
   h += row12h('EMA 21', fp(ind.ema21), cur>ind.ema21?'Precio arriba ✅':'Precio abajo 🔴', cur>ind.ema21?'var(--green)':'var(--red)');
   h += row12h('RSI 4H', ind.rsi?ind.rsi.toFixed(1)+'':'—', ind.rsi<35?'Sobreventa':ind.rsi>65?'Sobrecompra':'Neutral', ind.rsi<35?'var(--green)':ind.rsi>65?'var(--red)':'var(--text-s)');
   h += row12h('MACD hist', ind.macdHist?(ind.macdHist>0?'+':'')+ind.macdHist.toFixed(3):'—', ind.macdHist>0?'Positivo':'Negativo', ind.macdHist>0?'var(--green)':'var(--red)');
   h += row12h('Estocástico', ind.stochK?ind.stochK.toFixed(0)+'%':'—', ind.stochK<20?'Sobreventa':ind.stochK>80?'Sobrecompra':'Neutral', ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text-s)');
   h += row12h('Volumen', ind.volRatio?ind.volRatio.toFixed(1)+'x':'—', ind.volRatio>1.5?'Alto':'Normal', ind.volRatio>1.5?'var(--amber)':'var(--text-s)');
+  if (s.tf === '1h' && s.extra1h) {
+    var ex = s.extra1h;
+    h += row12h('ADX (Fuerza)', ex.adx?ex.adx.toFixed(0):'—', ex.adx>=25?'Tendencia fuerte ✅':ex.adx>=20?'Moderada':'Lateral ⚠️', ex.adx>=25?'var(--green)':ex.adx>=20?'var(--amber)':'var(--red)');
+    h += row12h('VWAP 1H', fp(ex.vwap), cur>ex.vwap?'Precio arriba ✅':'Precio abajo 🔴', cur>ex.vwap?'var(--green)':'var(--red)');
+    h += row12h('EMA 55 (Tendencia)', fp(ex.ema55), cur>ex.ema55?'Alcista':'Bajista', cur>ex.ema55?'var(--green)':'var(--red)');
+    h += row12h('EMA 9 Cross', ex.emaCrossUp?'↑ Cruce alcista':ex.emaCrossDown?'↓ Cruce bajista':ex.emaAlignBull?'Alineada alcista':'Alineada bajista', ex.emaCrossUp||ex.emaCrossDown?'SEÑAL ACTIVA':'Tendencia', ex.emaCrossUp||ex.emaAlignBull?'var(--green)':'var(--red)');
+    h += row12h('StochRSI', ex.stochBuySignal?'🎯 Buy pullback':ex.stochSellSignal?'🎯 Sell pullback':'Sin señal', ex.stochBuySignal||ex.stochSellSignal?'Señal de entrada':'Neutral', ex.stochBuySignal?'var(--green)':ex.stochSellSignal?'var(--red)':'var(--text-s)');
+  }
   h += '</div></div>';
 
   // ── ESTRUCTURA + OB/FVG ────────────────────────────────────────────────────
