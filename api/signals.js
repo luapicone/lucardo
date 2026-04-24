@@ -1463,6 +1463,7 @@ async function analyzeFutures(sym, tf = '4h') {
     score, bullScore:bull, bearScore:bear, dir,
     entry, tp1, tp2, sl, rr1, rr2, leverage, liqDist, slDistPct: +slDistPct.toFixed(2),
     winProb, winLabel, winColor, winFactors, winRisks,
+    timeEst: timeEst4h,
     atr4h: +atr4h.toFixed(6), atrPct: +atrPct.toFixed(3),
     indicators4h: {
       ema8: e8?+e8.toFixed(4):null, ema21: e21?+e21.toFixed(4):null,
@@ -1753,6 +1754,7 @@ async function analyzeStrategy1H(ticker, pair) {
     score, bullScore:bull, bearScore:bear, dir,
     entry, tp1, tp2, sl, rr1, rr2, leverage, liqDist,
     slDistPct: +slDistPct.toFixed(2),
+    timeEst: timeEst4h,
     atr4h: +atr.toFixed(6), atrPct: +atrPct.toFixed(3),
     winProb, winLabel, winColor, winFactors, winRisks,
     indicators4h: {
