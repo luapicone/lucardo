@@ -345,8 +345,9 @@ td.empty-state{text-align:center;padding:20px}
           <div style="font-size:13px;font-weight:500" id="futures-title-text">Futuros — Contexto 12H + Operativa 4H</div>
           <div style="font-size:11px;color:var(--text-t);margin-top:2px" id="futures-strat-text">Estrategia: ICT Confluencia + BOS/CHoCH + Order Block + FVG · Solo criptos</div>
           <div style="display:flex;gap:4px;margin-top:8px" id="tf-selector">
-            <button onclick="setFuturesTF('1h')" id="tf-1h" style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-s)">⚡ 1H</button>
-            <button onclick="setFuturesTF('4h')" id="tf-4h" style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:var(--red);color:#fff;font-weight:600">🔥 4H</button>
+            <button onclick="setFuturesTF('1h')"  id="tf-1h"  style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-s)">⚡ 1H</button>
+            <button onclick="setFuturesTF('4h')"  id="tf-4h"  style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:var(--red);color:#fff;font-weight:600">🔥 4H</button>
+            <button onclick="setFuturesTF('12h')" id="tf-12h" style="padding:4px 12px;border-radius:6px;font-size:11px;font-family:var(--sans);cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-s)">🌙 12H</button>
           </div>
         </div>
         <div class="ticker-search">
@@ -657,13 +658,18 @@ function setFuturesTF(tf) {
       title: 'Futuros — ICT Confluencia 4H + Contexto 12H',
       strat: 'ICT: BOS/CHoCH · Order Block · Fair Value Gap · EMA 8/21 · VWAP 12H',
       color: '#ef4444'
+    },
+    '12h': {
+      title: 'Futuros — Swing Institucional 12H + Contexto Diario',
+      strat: 'Weinstein Stage · BOS/CHoCH · Divergencia RSI · OB Alta TF · EMA 21/55/200 · Diario',
+      color: '#8b5cf6'
     }
   };
   var info = stratInfo[tf] || stratInfo['4h'];
   document.getElementById('futures-title-text').textContent = info.title;
   document.getElementById('futures-strat-text').textContent = info.strat;
   // Update button styles
-  ['1h','4h'].forEach(function(t) {
+  ['1h','4h','12h'].forEach(function(t) {
     var btn = document.getElementById('tf-'+t);
     if (!btn) return;
     btn.style.background = t === tf ? info.color : 'transparent';
@@ -1117,18 +1123,33 @@ function buildFuturesCard(s) {
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">';
       // TP1
       if (te.tp1 && te.tp1.timeLabel) {
-        h += '<div style="padding:10px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25)">';
-        h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:3px">✅ TP1 — ' + fp(s.tp1) + ' (' + (isLong?'+':'-') + te.tp1.distancePct + '%)</div>';
-        h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">' + esc(te.tp1.timeLabel) + '</div>';
-        h += '<div style="font-size:10px;color:var(--text-t);margin-top:3px">Estimado: ' + (te.tp1.candlesReal||'—') + ' velas ' + esc(te.tfLabel||'') + ' (rango optimista–conservador)</div>';
+        h += '<div style="padding:12px;border-radius:var(--r);background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3)">';
+        h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:5px">✅ TP1 — ' + fp(s.tp1) + ' (' + (isLong?'+':'-') + te.tp1.distancePct + '%)</div>';
+        h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green);margin-bottom:6px">' + esc(te.tp1.timeLabel) + '</div>';
+        // Argentina time — main feature
+        if (te.tp1.argOpt && te.tp1.argCons) {
+          h += '<div style="background:rgba(34,197,94,0.12);border-radius:6px;padding:7px 10px;margin-bottom:5px">';
+          h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--green);margin-bottom:4px">🇦🇷 Hora estimada Argentina</div>';
+          h += '<div style="font-size:12px;font-weight:700;color:var(--green)">Optimista: ' + esc(te.tp1.argOpt) + '</div>';
+          h += '<div style="font-size:11px;color:#86efac">Conservador: ' + esc(te.tp1.argCons) + '</div>';
+          h += '</div>';
+        }
+        h += '<div style="font-size:10px;color:var(--text-t)">' + (te.tp1.candlesReal||'—') + ' velas ' + esc(te.tfLabel||'') + ' estimadas</div>';
         h += '</div>';
       }
       // TP2
       if (te.tp2 && te.tp2.timeLabel) {
-        h += '<div style="padding:10px;border-radius:var(--r);background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15)">';
-        h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:3px">🎯 TP2 — ' + fp(s.tp2) + ' (' + (isLong?'+':'-') + te.tp2.distancePct + '%)</div>';
-        h += '<div style="font-family:var(--mono);font-size:16px;font-weight:700;color:#86efac">' + esc(te.tp2.timeLabel) + '</div>';
-        h += '<div style="font-size:10px;color:var(--text-t);margin-top:3px">Estimado: ' + (te.tp2.candlesReal||'—') + ' velas ' + esc(te.tfLabel||'') + ' (rango optimista–conservador)</div>';
+        h += '<div style="padding:12px;border-radius:var(--r);background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.2)">';
+        h += '<div style="font-size:10px;color:var(--text-t);margin-bottom:5px">🎯 TP2 — ' + fp(s.tp2) + ' (' + (isLong?'+':'-') + te.tp2.distancePct + '%)</div>';
+        h += '<div style="font-family:var(--mono);font-size:15px;font-weight:700;color:#86efac;margin-bottom:6px">' + esc(te.tp2.timeLabel) + '</div>';
+        if (te.tp2.argOpt && te.tp2.argCons) {
+          h += '<div style="background:rgba(134,239,172,0.1);border-radius:6px;padding:7px 10px;margin-bottom:5px">';
+          h += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#86efac;margin-bottom:4px">🇦🇷 Hora estimada Argentina</div>';
+          h += '<div style="font-size:12px;font-weight:700;color:#86efac">Optimista: ' + esc(te.tp2.argOpt) + '</div>';
+          h += '<div style="font-size:11px;color:#bbf7d0">Conservador: ' + esc(te.tp2.argCons) + '</div>';
+          h += '</div>';
+        }
+        h += '<div style="font-size:10px;color:var(--text-t)">' + (te.tp2.candlesReal||'—') + ' velas ' + esc(te.tfLabel||'') + ' estimadas</div>';
         h += '</div>';
       }
       h += '</div>';
@@ -1186,6 +1207,17 @@ function buildFuturesCard(s) {
   h += row12h('MACD hist', ind.macdHist?(ind.macdHist>0?'+':'')+ind.macdHist.toFixed(3):'—', ind.macdHist>0?'Positivo':'Negativo', ind.macdHist>0?'var(--green)':'var(--red)');
   h += row12h('Estocástico', ind.stochK?ind.stochK.toFixed(0)+'%':'—', ind.stochK<20?'Sobreventa':ind.stochK>80?'Sobrecompra':'Neutral', ind.stochK<20?'var(--green)':ind.stochK>80?'var(--red)':'var(--text-s)');
   h += row12h('Volumen', ind.volRatio?ind.volRatio.toFixed(1)+'x':'—', ind.volRatio>1.5?'Alto':'Normal', ind.volRatio>1.5?'var(--amber)':'var(--text-s)');
+  if (s.tf === '12h' && s.extra12h) {
+    var ex12 = s.extra12h;
+    h += row12h('Stage Weinstein', ex12.stageName||'—', ex12.stage===2?'✅ Alcista':ex12.stage===4?'🔴 Bajista':'⚠️ Sin tendencia', ex12.stage===2?'var(--green)':ex12.stage===4?'var(--red)':'var(--amber)');
+    h += row12h('MA30 (Weinstein)', fp(ex12.ma30), cur>ex12.ma30?'Precio arriba ✅':'Precio abajo 🔴', cur>ex12.ma30?'var(--green)':'var(--red)');
+    h += row12h('EMA 55', fp(ex12.ema55), cur>ex12.ema55?'Alcista':'Bajista', cur>ex12.ema55?'var(--green)':'var(--red)');
+    h += row12h('EMA 200', fp(ex12.ema200), ex12.ema200?(cur>ex12.ema200?'Mercado alcista':'Mercado bajista'):'—', ex12.ema200?(cur>ex12.ema200?'var(--green)':'var(--red)'):'var(--text-t)');
+    h += row12h('VWAP 12H', fp(ex12.vwap), cur>ex12.vwap?'Precio arriba ✅':'Precio abajo 🔴', cur>ex12.vwap?'var(--green)':'var(--red)');
+    h += row12h('Bollinger %', ex12.bbPct!=null?ex12.bbPct+'%':'—', ex12.bbPct>85?'Sobrecompra':ex12.bbPct<15?'Sobreventa':'Normal', ex12.bbPct>85?'var(--red)':ex12.bbPct<15?'var(--green)':'var(--text-s)');
+    if (ex12.bullDiv) h += row12h('RSI Divergencia', '↗ Alcista', 'Alta confiabilidad ✅', 'var(--green)');
+    if (ex12.bearDiv) h += row12h('RSI Divergencia', '↘ Bajista', 'Alta confiabilidad ⚠️', 'var(--red)');
+  }
   if (s.tf === '1h' && s.extra1h) {
     var ex = s.extra1h;
     h += row12h('ADX (Fuerza)', ex.adx?ex.adx.toFixed(0):'—', ex.adx>=25?'Tendencia fuerte ✅':ex.adx>=20?'Moderada':'Lateral ⚠️', ex.adx>=25?'var(--green)':ex.adx>=20?'var(--amber)':'var(--red)');

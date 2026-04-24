@@ -1096,7 +1096,8 @@ async function analyzeFutures(sym, tf = '4h') {
   const pair = ticker + 'USDT';
 
   // Route to strategy based on timeframe
-  if (tf === '1h') return analyzeStrategy1H(ticker, pair);
+  if (tf === '1h')  return analyzeStrategy1H(ticker, pair);
+  if (tf === '12h') return analyzeStrategy12H(ticker, pair);
 
   // Default: 4H strategy (ICT Confluencia)
   // Fetch 4H (50 velas = ~8 días) y 12H (30 velas = ~15 días) en paralelo
@@ -1840,10 +1841,32 @@ function estimateTimeToTP({ entry, tp1, tp2, sl, dir, bars, atr, candleHours, tf
   const tp2Min = candlesTP2 ? fmt(candlesTP2) : null;
   const tp2Max = candlesTP2 ? fmt(Math.round(candlesTP2 * 2.5)) : null;
 
-  // Probabilidad de llegar al TP1 antes que al SL (simplificado)
-  // Si R:R >= 2 el TP1 es estadísticamente alcanzable con ~55% de probabilidad
+  // Hora estimada en Argentina (UTC-3) para cada TP
+  // Optimista = candlesTP1 × candleHours horas desde ahora
+  // Conservador = candlesTP1 × 2.5 × candleHours horas desde ahora
+  const now = Date.now();
+  const toArgTime = (addHours) => {
+    const d = new Date(now + addHours * 3600000);
+    // Argentina = UTC-3 siempre (no tiene horario de verano)
+    const argOffset = -3 * 60;
+    const local = new Date(d.getTime() + argOffset * 60000);
+    const dd = String(local.getUTCDate()).padStart(2,'0');
+    const mm = String(local.getUTCMonth()+1).padStart(2,'0');
+    const hh = String(local.getUTCHours()).padStart(2,'0');
+    const mi = String(local.getUTCMinutes()).padStart(2,'0');
+    const today = new Date(now + argOffset*60000);
+    const isToday = dd === String(today.getUTCDate()).padStart(2,'0') && mm === String(today.getUTCMonth()+1).padStart(2,'0');
+    const isTomorrow = (local.getUTCDate() - today.getUTCDate() === 1) || (today.getUTCDate() > 25 && local.getUTCDate() < 5);
+    const dayLabel = isToday ? 'hoy' : isTomorrow ? 'mañana' : dd + '/' + mm;
+    return dayLabel + ' ' + hh + ':' + mi + ' ARG';
+  };
+
+  const tp1HoursOpt  = candlesTP1 ? candlesTP1 * candleHours : null;
+  const tp1HoursCons = candlesTP1 ? Math.round(candlesTP1 * 2.5) * candleHours : null;
+  const tp2HoursOpt  = candlesTP2 ? candlesTP2 * candleHours : null;
+  const tp2HoursCons = candlesTP2 ? Math.round(candlesTP2 * 2.5) * candleHours : null;
+
   const slDist = sl ? Math.abs(entry - sl) : atr;
-  const rrTP1  = distTP1 ? distTP1 / slDist : 1.5;
 
   return {
     speedPerCandle: +speedPerCandle.toFixed(6),
@@ -1856,6 +1879,8 @@ function estimateTimeToTP({ entry, tp1, tp2, sl, dir, bars, atr, candleHours, tf
       timeMin: tp1Min,
       timeMax: tp1Max,
       timeLabel: tp1Min && tp1Max ? tp1Min + ' – ' + tp1Max : null,
+      argOpt:  tp1HoursOpt  ? toArgTime(tp1HoursOpt)  : null,
+      argCons: tp1HoursCons ? toArgTime(tp1HoursCons) : null,
     } : null,
     tp2: tp2 ? {
       distancePct: distTP2 ? +((distTP2/entry)*100).toFixed(2) : null,
@@ -1864,6 +1889,8 @@ function estimateTimeToTP({ entry, tp1, tp2, sl, dir, bars, atr, candleHours, tf
       timeMin: tp2Min,
       timeMax: tp2Max,
       timeLabel: tp2Min && tp2Max ? tp2Min + ' – ' + tp2Max : null,
+      argOpt:  tp2HoursOpt  ? toArgTime(tp2HoursOpt)  : null,
+      argCons: tp2HoursCons ? toArgTime(tp2HoursCons) : null,
     } : null,
     note: 'Basado en velocidad promedio de ' + speedPerCandle.toFixed(4) + ' por vela ' + tfLabel + '. Los mercados se mueven en zigzag — el rango incluye un factor de 2.5× para ser conservador.',
   };
@@ -1898,4 +1925,356 @@ function calcADX(bars, period=14) {
   const smoothDX = smooth(dx, period);
   smoothDX.forEach(v => adxVals.push(v));
   return adxVals.slice(0, n);
+}
+
+// ─────────────────────────────────────────────────────────
+// ESTRATEGIA 12H — Swing Trading Institucional
+// ─────────────────────────────────────────────────────────
+// Combina 4 enfoques complementarios para swing trading:
+//
+// 1. Weinstein Stage Analysis (tendencia primaria)
+//    — MA30 en 12H como filtro de dirección de fondo
+//    — Solo operar en Stage 2 (alcista) o Stage 4 (bajista)
+//
+// 2. Confluencia de zonas institucionales (SMC/ICT)
+//    — BOS/CHoCH en 12H para estructura de mercado mayor
+//    — Order Blocks de alta temporalidad = mayor peso
+//    — Contexto diario (1D) como filtro superior
+//
+// 3. RSI Divergencia + Extreme Zones
+//    — Divergencias RSI en 12H tienen muy alta confiabilidad
+//    — RSI extremo (<30 / >70) en 12H = señal de reversión
+//
+// 4. EMA 21/55/200 Alignment
+//    — Alineación perfecta de 3 EMAs = tendencia fuerte
+//    — 200 EMA como soporte/resistencia institucional clave
+//
+// Contexto: Daily (1D) para bias de largo plazo
+// ─────────────────────────────────────────────────────────
+
+async function analyzeStrategy12H(ticker, pair) {
+  // 12H: 60 velas = 30 días | Daily: 30 velas = 30 días
+  const [bars12h, bars1d] = await Promise.all([
+    fetchKlinesFutures(ticker, '12h', 60),
+    fetchKlinesFutures(ticker, '4h', 30), // usamos 4H×6 como proxy de 1D
+  ]);
+
+  if (!bars12h || bars12h.length < 20) {
+    return { error: `No se encontraron datos 12H para ${ticker}.`, ticker };
+  }
+
+  const n = bars12h.length;
+  const c = bars12h.map(b => b.close);
+  const h = bars12h.map(b => b.high);
+  const l = bars12h.map(b => b.low);
+  const v = bars12h.map(b => b.volume);
+  const cur = c[n-1], prev = c[n-2];
+
+  // ── INDICADORES 12H ──────────────────────────────────────
+  const ema21  = calcEMA(c, 21);
+  const ema55  = calcEMA(c, 55);
+  const ema200 = calcEMA(c, Math.min(200, n-1));
+  const ma30   = calcSMA(c, 30);
+  const rsi12h = calcRSI(c, 14);
+  const macd12h = calcMACD(c);
+  const atrArr  = calcATR(bars12h, 14);
+  const vol20   = calcSMA(v, 20);
+  const bb12h   = calcBollinger(c, 20, 2);
+
+  const e21  = ema21[n-1];
+  const e55  = ema55[n-1];
+  const e200 = ema200[n-1];
+  const ma30Cur  = ma30[n-1];
+  const ma30Prev = ma30[Math.max(0, n-6)] || ma30Cur; // 3 días atrás
+  const rsiCur   = rsi12h[n-1];
+  const rsiPrev  = rsi12h[n-2];
+  const rsiPrev2 = rsi12h[n-5] || rsiPrev;
+  const macdLine = macd12h.macdLine[n-1];
+  const macdSig  = macd12h.signalLine[n-1];
+  const macdHist = macd12h.histogram[n-1];
+  const macdHistP= macd12h.histogram[n-2];
+  const macdLinP = macd12h.macdLine[n-2];
+  const macdSigP = macd12h.signalLine[n-2];
+  const atr12h   = atrArr[n-1] || cur * 0.015;
+  const bbCur    = bb12h[n-1];
+  const volRatio = vol20[n-1] > 0 ? v[n-1] / vol20[n-1] : 1;
+
+  // ── WEINSTEIN STAGE 12H ──────────────────────────────────
+  const ma30Rising  = ma30Cur > ma30Prev * 1.001;
+  const ma30Falling = ma30Cur < ma30Prev * 0.999;
+  let stage = 1;
+  if      (cur > ma30Cur && ma30Rising)              stage = 2; // Avance
+  else if (cur > ma30Cur && !ma30Rising && !ma30Falling) stage = 3; // Distribución
+  else if (cur < ma30Cur && (ma30Falling || !ma30Rising)) stage = 4; // Declive
+
+  // ── ESTRUCTURA 12H (BOS / CHoCH) ─────────────────────────
+  const lb = 10; // lookback en velas 12H
+  const swHigh12h = Math.max(...h.slice(n-lb-1, n-1));
+  const swLow12h  = Math.min(...l.slice(n-lb-1, n-1));
+  const swHPrev   = Math.max(...h.slice(n-lb*2-1, n-lb-1));
+  const swLPrev   = Math.min(...l.slice(n-lb*2-1, n-lb-1));
+
+  const bos_bull  = cur > swHigh12h && prev <= swHigh12h;
+  const bos_bear  = cur < swLow12h  && prev >= swLow12h;
+  const choch_bull = swLow12h > swLPrev && cur > e21;
+  const choch_bear = swHigh12h < swHPrev && cur < e21;
+
+  // ── ORDER BLOCK 12H ──────────────────────────────────────
+  // En 12H los OBs tienen mucho más peso — buscar en más velas atrás
+  let bullOB = null, bearOB = null;
+  for (let i = n-3; i > Math.max(n-25, 1); i--) {
+    const b = bars12h[i];
+    const fwd = c[Math.min(i+4, n-1)];
+    if (!bullOB && b.close < b.open && (fwd - b.close) / atr12h > 2)
+      bullOB = { high: +b.open.toFixed(4), low: +b.close.toFixed(4), mid: +((b.open+b.close)/2).toFixed(4) };
+    if (!bearOB && b.close > b.open && (b.close - fwd) / atr12h > 2)
+      bearOB = { high: +b.close.toFixed(4), low: +b.open.toFixed(4), mid: +((b.open+b.close)/2).toFixed(4) };
+    if (bullOB && bearOB) break;
+  }
+  const inBullOB = bullOB && cur >= bullOB.low * 0.997 && cur <= bullOB.high * 1.003;
+  const inBearOB = bearOB && cur >= bearOB.low * 0.997 && cur <= bearOB.high * 1.003;
+
+  // ── DIVERGENCIAS RSI 12H ─────────────────────────────────
+  // En 12H tienen altísima confiabilidad
+  const { bullDiv, bearDiv } = detectDivergence(c, rsi12h, 20);
+
+  // ── CONTEXTO DIARIO (1D via 4H) ──────────────────────────
+  let ctx1d = null;
+  if (bars1d && bars1d.length >= 15) {
+    const nd = bars1d.length;
+    const cd = bars1d.map(b=>b.close), hd = bars1d.map(b=>b.high), ld = bars1d.map(b=>b.low);
+    const ema21d = calcEMA(cd, 21);
+    const rsi1d  = calcRSI(cd, 14);
+    const hhD = Math.max(...hd.slice(-8)), llD = Math.min(...ld.slice(-8));
+    const hhDp= Math.max(...hd.slice(-16,-8)), llDp= Math.min(...ld.slice(-16,-8));
+    ctx1d = {
+      ema21: ema21d[nd-1],
+      rsi: rsi1d[nd-1],
+      bullBias: cd[nd-1] > ema21d[nd-1] && hhD > hhDp,
+      bearBias: cd[nd-1] < ema21d[nd-1] && llD < llDp,
+    };
+  }
+
+  // ── VWAP 12H (últimas 5 velas = 2.5 días) ────────────────
+  let cumTPV = 0, cumVol = 0;
+  bars12h.slice(-5).forEach(b => { const tp=(b.high+b.low+b.close)/3; cumTPV+=tp*b.volume; cumVol+=b.volume; });
+  const vwap12h = cumVol > 0 ? cumTPV/cumVol : cur;
+
+  // ── SCORING ──────────────────────────────────────────────
+  let bull = 0, bear = 0;
+  const sigs = [];
+
+  // PESO 5: Contexto 1D (filtro superior)
+  if (ctx1d) {
+    if (ctx1d.bullBias) { sigs.push({icon:'🗓️',text:'Contexto diario alcista: precio sobre EMA21 1D con HH+HL. Bias comprador de largo plazo activo.',bull:true,w:5}); bull+=5; }
+    else if (ctx1d.bearBias) { sigs.push({icon:'🗓️',text:'Contexto diario bajista: precio bajo EMA21 1D con LH+LL. Bias vendedor de largo plazo activo.',bull:false,w:5}); bear+=5; }
+    else { sigs.push({icon:'🗓️',text:'Contexto diario lateral. Sin sesgo de largo plazo claro — señales 12H menos confiables.',bull:null,w:0}); }
+  }
+
+  // PESO 5: Weinstein Stage 12H
+  if (stage===2) { sigs.push({icon:'📊',text:'Stage 2 Weinstein en 12H: MA30 subiendo con precio encima. Tendencia alcista confirmada — zona de compra según metodología Weinstein.',bull:true,w:5}); bull+=5; }
+  else if (stage===4) { sigs.push({icon:'📊',text:'Stage 4 Weinstein en 12H: MA30 bajando con precio debajo. Tendencia bajista — evitar largos, operar cortos.',bull:false,w:5}); bear+=5; }
+  else if (stage===3) { sigs.push({icon:'📊',text:'Stage 3 Weinstein: distribución. MA30 aplanando — reducir exposición, posible transición a Stage 4.',bull:false,w:2}); bear+=2; }
+  else { sigs.push({icon:'📊',text:'Stage 1 Weinstein: base/acumulación. Lateral sin dirección definida — esperar ruptura del Stage 1.',bull:null,w:0}); }
+
+  // PESO 4: BOS / CHoCH 12H
+  if (bos_bull) { sigs.push({icon:'🏗️',text:'BOS alcista en 12H: rompió swing high $'+swHigh12h.toFixed(2)+'. Estructura institucional cambiada al alza.',bull:true,w:4}); bull+=4; }
+  if (bos_bear) { sigs.push({icon:'🏗️',text:'BOS bajista en 12H: rompió swing low $'+swLow12h.toFixed(2)+'. Estructura institucional cambiada a la baja.',bull:false,w:4}); bear+=4; }
+  if (choch_bull&&!bos_bull) { sigs.push({icon:'🔄',text:'CHoCH alcista en 12H: Higher Low formado sobre EMA21. Posible inicio de tendencia alcista.',bull:true,w:3}); bull+=3; }
+  if (choch_bear&&!bos_bear) { sigs.push({icon:'🔄',text:'CHoCH bajista en 12H: Lower High formado bajo EMA21. Posible inicio de tendencia bajista.',bull:false,w:3}); bear+=3; }
+
+  // PESO 4: Divergencias RSI (muy confiables en 12H)
+  if (bullDiv) { sigs.push({icon:'🔄',text:'Divergencia alcista RSI en 12H: precio hace mínimo más bajo pero RSI no confirma. Alta confiabilidad en esta temporalidad — señal de reversión al alza.',bull:true,w:4}); bull+=4; }
+  if (bearDiv) { sigs.push({icon:'🔄',text:'Divergencia bajista RSI en 12H: precio hace máximo más alto pero RSI no confirma. Alta confiabilidad — señal de reversión a la baja.',bull:false,w:4}); bear+=4; }
+
+  // PESO 3: Alineación EMAs 21/55/200
+  if (cur>e21 && e21>e55 && (e200?e55>e200:true)) {
+    sigs.push({icon:'📈',text:'Alineación EMA perfecta alcista: precio > EMA21 > EMA55 > EMA200. Tendencia 12H sólida en todos los plazos.',bull:true,w:3}); bull+=3;
+  } else if (cur<e21 && e21<e55 && (e200?e55<e200:true)) {
+    sigs.push({icon:'📉',text:'Alineación EMA perfecta bajista: precio < EMA21 < EMA55 < EMA200. Presión vendedora en todos los plazos.',bull:false,w:3}); bear+=3;
+  } else if (cur>e21 && cur>e55) {
+    sigs.push({icon:'↗️',text:'Precio sobre EMA21 y EMA55 en 12H. Sesgo alcista de mediano plazo activo.',bull:true,w:2}); bull+=2;
+  } else if (cur<e21 && cur<e55) {
+    sigs.push({icon:'↘️',text:'Precio bajo EMA21 y EMA55 en 12H. Sesgo bajista de mediano plazo activo.',bull:false,w:2}); bear+=2;
+  }
+
+  // PESO 3: EMA 200 (soporte/resistencia institucional mayor)
+  if (e200) {
+    if (Math.abs(cur-e200)/e200 < 0.015) {
+      sigs.push({icon:'⚓',text:'Precio en EMA 200 en 12H ($'+e200.toFixed(2)+'). Nivel institucional crítico — alta probabilidad de reacción fuerte.',bull:null,w:2});
+    } else if (cur>e200) {
+      sigs.push({icon:'⚓',text:'Precio sobre EMA200 12H ($'+e200.toFixed(2)+'). Mercado alcista de largo plazo — soporte institucional muy relevante debajo.',bull:true,w:2}); bull+=2;
+    } else {
+      sigs.push({icon:'⚓',text:'Precio bajo EMA200 12H ($'+e200.toFixed(2)+'). Mercado bajista de largo plazo — resistencia institucional mayor encima.',bull:false,w:2}); bear+=2;
+    }
+  }
+
+  // PESO 3: Order Block 12H
+  if (inBullOB) { sigs.push({icon:'📦',text:'Precio en Order Block alcista 12H ($'+bullOB.low+'-$'+bullOB.high+'). Zona institucional de alta temporalidad — demanda institucional muy relevante.',bull:true,w:3}); bull+=3; }
+  if (inBearOB) { sigs.push({icon:'📦',text:'Precio en Order Block bajista 12H ($'+bearOB.low+'-$'+bearOB.high+'). Zona institucional de alta temporalidad — oferta institucional muy relevante.',bull:false,w:3}); bear+=3; }
+
+  // PESO 2: RSI extremos 12H
+  if (rsiCur<30) { sigs.push({icon:'🟢',text:'RSI 12H en '+rsiCur.toFixed(0)+' (sobreventa). En 12H esta señal tiene mucho peso — alta probabilidad de rebote o reversión.',bull:true,w:2}); bull+=2; }
+  else if (rsiCur>70) { sigs.push({icon:'🔴',text:'RSI 12H en '+rsiCur.toFixed(0)+' (sobrecompra). Riesgo de corrección significativa desde este nivel.',bull:false,w:2}); bear+=2; }
+  else if (rsiCur>55&&rsiCur>rsiPrev) { sigs.push({icon:'📊',text:'RSI 12H en '+rsiCur.toFixed(0)+' subiendo — momentum alcista sostenido.',bull:true,w:1}); bull+=1; }
+  else if (rsiCur<45&&rsiCur<rsiPrev) { sigs.push({icon:'📊',text:'RSI 12H en '+rsiCur.toFixed(0)+' bajando — momentum bajista persistente.',bull:false,w:1}); bear+=1; }
+
+  // PESO 2: MACD 12H
+  const macdCrossUp   = macdLine>macdSig && macdLinP<=macdSigP;
+  const macdCrossDown = macdLine<macdSig && macdLinP>=macdSigP;
+  if (macdCrossUp)   { sigs.push({icon:'⚡',text:'MACD cruzó al alza en 12H — cambio de momentum de alta temporalidad muy relevante.',bull:true,w:2}); bull+=2; }
+  else if (macdCrossDown) { sigs.push({icon:'⚡',text:'MACD cruzó a la baja en 12H — cambio de momentum bajista de alta temporalidad.',bull:false,w:2}); bear+=2; }
+  else if (macdLine>macdSig&&macdHist>macdHistP) { sigs.push({icon:'📈',text:'MACD positivo y acelerando en 12H — swing alcista en expansión.',bull:true,w:1}); bull+=1; }
+  else if (macdLine<macdSig&&macdHist<macdHistP) { sigs.push({icon:'📉',text:'MACD negativo y acelerando en 12H — swing bajista en expansión.',bull:false,w:1}); bear+=1; }
+
+  // PESO 1: Bollinger Bands 12H
+  if (bbCur&&bbCur.pct!=null) {
+    if (bbCur.pct<0.1) { sigs.push({icon:'🟢',text:'Precio en banda inferior de Bollinger 12H. Sobreventa estadística — zona de rebote probable.',bull:true,w:1}); bull+=1; }
+    else if (bbCur.pct>0.9) { sigs.push({icon:'🔴',text:'Precio en banda superior de Bollinger 12H. Extensión estadística — corrección probable.',bull:false,w:1}); bear+=1; }
+    if (bbCur.width<0.04) { sigs.push({icon:'⚡',text:'Bollinger Squeeze en 12H. Compresión de volatilidad de alta temporalidad — movimiento explosivo inminente.',bull:null,w:1}); }
+  }
+
+  // PESO 1: Volumen
+  if (volRatio>1.5&&cur>prev) { sigs.push({icon:'🔊',text:'Volumen '+volRatio.toFixed(1)+'x promedio en vela verde 12H — acumulación institucional con convicción.',bull:true,w:1}); bull+=1; }
+  else if (volRatio>1.5&&cur<prev) { sigs.push({icon:'🔊',text:'Volumen '+volRatio.toFixed(1)+'x promedio en vela roja 12H — distribución institucional con convicción.',bull:false,w:1}); bear+=1; }
+
+  // ── DECISIÓN — requiere Stage alineado + señal primaria ──
+  const score = bull - bear;
+  const stageOk = (score>0&&(stage===2||stage===1)) || (score<0&&(stage===4||stage===3));
+  const hasPrimBull = bos_bull||choch_bull||bullDiv||inBullOB||(stage===2&&ctx1d?.bullBias);
+  const hasPrimBear = bos_bear||choch_bear||bearDiv||inBearOB||(stage===4&&ctx1d?.bearBias);
+
+  let dir = 'NEUTRAL';
+  if (score>=6&&hasPrimBull) dir='LONG';
+  else if (score<=-6&&hasPrimBear) dir='SHORT';
+
+  // ── ENTRY / TP / SL — swing 12H ──────────────────────────
+  // SL más amplio que 4H — el swing 12H necesita más espacio
+  // Entry: OB mid o precio actual
+  // SL: swing low/high + 1×ATR buffer (mínimo 1.5×ATR)
+  // TP1: swing high/low reciente (mínimo 2R)
+  // TP2: EMA200 o extensión de estructura (mínimo 4R)
+  const atrPct = (atr12h/cur)*100;
+  const recH = h.slice(n-30,n-1);
+  const recL = l.slice(n-30,n-1);
+  const swHAbove = recH.filter(v=>v>cur*1.003).sort((a,b)=>a-b);
+  const swLBelow = recL.filter(v=>v<cur*0.997).sort((a,b)=>b-a);
+
+  let entry=+cur.toFixed(4), tp1=null, tp2=null, sl=null, rr1=null, rr2=null;
+
+  if (dir==='LONG') {
+    entry = inBullOB&&bullOB ? +((bullOB.high+bullOB.low)/2).toFixed(4) : +cur.toFixed(4);
+    let rawSL;
+    if (inBullOB&&bullOB&&(entry-bullOB.low)>=atr12h) rawSL = bullOB.low - atr12h*0.5;
+    else if (swLBelow.length>0) rawSL = swLBelow[0] - atr12h*0.5;
+    else rawSL = entry - atr12h*2;
+    sl = +Math.min(rawSL, entry-atr12h*1.5).toFixed(4);
+    const risk = entry-sl;
+    const tp1Nat = swHAbove.find(hh=>hh>=entry+risk*2);
+    tp1 = tp1Nat ? +tp1Nat.toFixed(4) : +(entry+risk*2.5).toFixed(4);
+    const tp2Nat = e200&&e200>entry+risk*4 ? e200 : swHAbove.find(hh=>hh>=entry+risk*4);
+    tp2 = tp2Nat ? +Math.max(tp2Nat,entry+risk*4).toFixed(4) : +(entry+risk*5).toFixed(4);
+    rr1 = +((tp1-entry)/risk).toFixed(2);
+    rr2 = +((tp2-entry)/risk).toFixed(2);
+  } else if (dir==='SHORT') {
+    entry = inBearOB&&bearOB ? +((bearOB.high+bearOB.low)/2).toFixed(4) : +cur.toFixed(4);
+    let rawSL;
+    if (inBearOB&&bearOB&&(bearOB.high-entry)>=atr12h) rawSL = bearOB.high + atr12h*0.5;
+    else if (swHAbove.length>0) rawSL = swHAbove[0] + atr12h*0.5;
+    else rawSL = entry + atr12h*2;
+    sl = +Math.max(rawSL, entry+atr12h*1.5).toFixed(4);
+    const risk = sl-entry;
+    const tp1Nat = swLBelow.find(ll=>ll<=entry-risk*2);
+    tp1 = tp1Nat ? +tp1Nat.toFixed(4) : +(entry-risk*2.5).toFixed(4);
+    const tp2Nat = e200&&e200<entry-risk*4 ? e200 : swLBelow.find(ll=>ll<=entry-risk*4);
+    tp2 = tp2Nat ? +Math.min(tp2Nat,entry-risk*4).toFixed(4) : +(entry-risk*5).toFixed(4);
+    rr1 = +((entry-tp1)/risk).toFixed(2);
+    rr2 = +((entry-tp2)/risk).toFixed(2);
+  }
+
+  const slDistPct = sl ? Math.abs(entry-sl)/entry*100 : atrPct*1.5;
+  const maxLevByRisk = Math.floor(100/(slDistPct*1.5));
+  const volCap = atrPct>4?2:atrPct>2.5?3:atrPct>1.5?5:atrPct>0.8?8:10;
+  const leverage = Math.min(maxLevByRisk, volCap, 10); // 12H = leverage más conservador
+  const liqDist = +(100/leverage).toFixed(1);
+
+  // ── WIN PROBABILITY 12H ──────────────────────────────────
+  // Base más alta que 4H porque es mayor temporalidad = menos ruido
+  let winProb = 45;
+  const winFactors=[], winRisks=[];
+
+  if (ctx1d?.bullBias&&dir==='LONG')  { winProb+=12; winFactors.push('Contexto diario alcista alineado — bias de largo plazo confirma el trade'); }
+  else if (ctx1d?.bearBias&&dir==='SHORT') { winProb+=12; winFactors.push('Contexto diario bajista alineado — bias de largo plazo confirma el trade'); }
+  else { winProb-=8; winRisks.push('Contexto diario no confirma la dirección del trade'); }
+
+  if (stage===2&&dir==='LONG')  { winProb+=10; winFactors.push('Stage 2 Weinstein: tendencia primaria alcista — máxima confiabilidad'); }
+  if (stage===4&&dir==='SHORT') { winProb+=10; winFactors.push('Stage 4 Weinstein: tendencia primaria bajista — máxima confiabilidad'); }
+  if (stage===1||stage===3)     { winProb-=5;  winRisks.push('Weinstein Stage '+stage+' — dirección no confirmada por tendencia primaria'); }
+
+  if ((dir==='LONG'&&bos_bull)||(dir==='SHORT'&&bos_bear))    { winProb+=8; winFactors.push('BOS 12H confirmado — estructura institucional de alta temporalidad alineada'); }
+  if ((dir==='LONG'&&bullDiv)||(dir==='SHORT'&&bearDiv))       { winProb+=8; winFactors.push('Divergencia RSI 12H — señal de muy alta confiabilidad en esta temporalidad'); }
+  if ((dir==='LONG'&&inBullOB)||(dir==='SHORT'&&inBearOB))     { winProb+=6; winFactors.push('Order Block 12H activo — zona institucional de alta temporalidad'); }
+  if ((dir==='LONG'&&cur>e55&&e21>e55)||(dir==='SHORT'&&cur<e55&&e21<e55)) { winProb+=5; winFactors.push('EMAs 21/55 alineadas con la dirección'); }
+  if ((dir==='LONG'&&macdCrossUp)||(dir==='SHORT'&&macdCrossDown)) { winProb+=4; winFactors.push('MACD cross 12H — cambio de momentum de alta temporalidad'); }
+  if ((dir==='LONG'&&rsiCur<35)||(dir==='SHORT'&&rsiCur>65)) { winProb+=4; winFactors.push('RSI en zona extrema en 12H — mayor probabilidad de reversión'); }
+  if (rr1>=2.5) { winProb+=3; winFactors.push('R:R '+rr1+':1 — expectativa matemática muy positiva'); }
+  else if (rr1<2) { winProb-=5; winRisks.push('R:R menor a 2:1 — para swing 12H el mínimo recomendado es 2:1'); }
+  if ((dir==='LONG'&&rsiCur>70)||(dir==='SHORT'&&rsiCur<30)) { winProb-=8; winRisks.push('RSI sobreextendido en la dirección del trade — corrección posible antes del TP'); }
+  if (volRatio<0.7) { winProb-=4; winRisks.push('Volumen bajo — movimiento sin convicción institucional'); }
+
+  winProb = Math.max(28, Math.min(80, winProb));
+  const winLabel = winProb>=68?'Alta':winProb>=55?'Moderada':winProb>=44?'Baja-Moderada':'Baja';
+  const winColor = winProb>=68?'#22c55e':winProb>=55?'#eab308':winProb>=44?'#f97316':'#ef4444';
+
+  let verdict, verdictColor, verdictIcon;
+  if (dir==='LONG')       { verdict='LONG';      verdictColor='#22c55e'; verdictIcon='🟢'; }
+  else if (dir==='SHORT') { verdict='SHORT';     verdictColor='#ef4444'; verdictIcon='🔴'; }
+  else                    { verdict='SIN SETUP'; verdictColor='#eab308'; verdictIcon='⚖️'; }
+
+  // Tiempo estimado (12H = velas de 12 horas)
+  const timeEst = estimateTimeToTP({
+    entry, tp1, tp2, sl, dir,
+    bars: bars12h, atr: atr12h, candleHours: 12,
+    tfLabel: '12H'
+  });
+
+  return {
+    ticker, pair, mode:'futures', tf:'12h',
+    strategyName: 'Swing Institucional 12H',
+    strategyDesc: 'Weinstein Stage · BOS/CHoCH · Divergencia RSI · OB Alta Temporalidad · EMA 21/55/200 · Contexto Diario',
+    currentPrice: +cur.toFixed(6),
+    verdict, verdictColor, verdictIcon,
+    score, bullScore:bull, bearScore:bear, dir,
+    entry, tp1, tp2, sl, rr1, rr2, leverage, liqDist,
+    slDistPct: +slDistPct.toFixed(2),
+    timeEst,
+    winProb, winLabel, winColor, winFactors, winRisks,
+    atr4h: +atr12h.toFixed(6), atrPct: +atrPct.toFixed(3),
+    indicators4h: {
+      ema8: e21?+e21.toFixed(4):null, ema21: e55?+e55.toFixed(4):null,
+      rsi: +rsiCur.toFixed(1),
+      macdLine: macdLine?+macdLine.toFixed(4):null,
+      macdHist: macdHist?+macdHist.toFixed(4):null,
+      stochK: null, volRatio: +volRatio.toFixed(2),
+    },
+    extra12h: {
+      stage, stageName: stage===2?'Stage 2 — Avance':stage===4?'Stage 4 — Declive':stage===3?'Stage 3 — Distribución':'Stage 1 — Base',
+      ma30: ma30Cur?+ma30Cur.toFixed(4):null,
+      ema55: e55?+e55.toFixed(4):null,
+      ema200: e200?+e200.toFixed(4):null,
+      vwap: +vwap12h.toFixed(4),
+      bbPct: bbCur?.pct!=null?+(bbCur.pct*100).toFixed(0):null,
+      bullDiv, bearDiv,
+    },
+    ctx12h: ctx1d ? {
+      ema21: ctx1d.ema21, rsi: ctx1d.rsi,
+      bullStructure: ctx1d.bullBias, bearStructure: ctx1d.bearBias,
+      aboveVwap: ctx1d.bullBias, vwap: ctx1d.ema21, cur,
+    } : null,
+    structure: { bos_bull, bos_bear, choch_bull, choch_bear },
+    bullOB, bearOB, bullFVG:null, bearFVG:null,
+    inBullOB, inBearOB, inBullFVG:false, inBearFVG:false,
+    signals: sigs.sort((a,b)=>b.w-a.w),
+    analyzedAt: new Date().toISOString(),
+  };
 }
